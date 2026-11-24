@@ -20,9 +20,9 @@ x-mqttlens-source: docs/DEVELOPMENT.md §11
 | 4 | Hook identification of subagents | **Done** — `agent_type` ([roles](/process/roles.md)) |
 | 5 | `emqtt` without QUIC | **Done** — needs the `quicer` override ([architecture overview](/architecture/overview.md)) |
 | 6 | Split DESIGN.md and this file into `specs/` ([OKF layout](/process/okf-specs.md)) | Open — after the owner approves this v3 |
-| 7 | Git identity (`BillyGrande`, `23191012+BillyGrande@users.noreply.github.com`), employer deny-list outside the repo, public code repo + private beads repo (P7), branch protection, security settings ([GitHub settings](/process/guardrails.md)) | Open — needs owner confirmation (outward-facing) |
-| 8 | `bd metrics off` | Open — owner action |
-| 9 | Minimal `bd init --server` in the real repo ([beads setup](/process/beads.md) row "bd init") | Open — after 7 |
+| 7 | Git identity (`BillyGrande`, `23191012+BillyGrande@users.noreply.github.com`), employer deny-list outside the repo, public code repo + private beads repo (P7), branch protection, security settings ([GitHub settings](/process/guardrails.md)) | Done 2026-11-24 — public repo `BillyGrande/mqtt-lens` + private `BillyGrande/mqtt-lens-work`; `.githooks/` + deny-list; branch protection and security settings on |
+| 8 | `bd metrics off` | Done 2026-11-24 — `bd metrics status` = off |
+| 9 | Minimal `bd init --server` in the real repo ([beads setup](/process/beads.md) row "bd init") | Done 2026-11-24 — server mode, prefix `ml`; Codex, Cursor and `.agents` files and generated `CLAUDE.md` removed; Dolt remote = private work repo |
 
 The spike sandboxes (Phoenix probe app, beads test repos) are in the session scratchpad. They are
 throw-away and are not part of the project.
