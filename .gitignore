@@ -1,0 +1,18 @@
+/_build/
+/deps/
+/cover/
+/doc/
+/priv/static/assets/
+erl_crash.dump
+*.ez
+*.pem
+*.key
+.env
+config.local.toml
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh source-path=SCRIPTDIR
+. "$here/lib.sh"
+require_denylist
+check_identity
+git diff --cached --no-color -U0 --diff-filter=ACMR | scan_diff "staged diff" || exit 1
+chain_beads pre-commit "$@"

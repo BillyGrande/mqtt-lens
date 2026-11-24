@@ -1,0 +1,44 @@
+---
+type: process
+title: Roles
+description: Roles, what each role does and never does, and how the limits are enforced.
+status: draft
+tags: [process, roles]
+generated:
+  by: claude-sonnet-5-5
+  at: 2026-11-24T10:19:47Z
+x-mqttlens-source: docs/DEVELOPMENT.md §2
+---
+
+# Roles
+
+| Role | Who | Does | Never does |
+|---|---|---|---|
+| **Owner** | The human (`BillyGrande`) | Approves intents, specs, merges, releases and the security sign-off. Answers `needs-human` issues. | — |
+| **Orchestrator** | The main Claude session (Opus) | Talks with the owner. Records intents as epics. Splits work into tasks. Picks ready tasks and dispatches agents. Reads agent results from beads. Reports status. | Write code, tests or spec content. Review diffs. Run tests. |
+| **architect** | Agent, Opus | Drafts and updates specs and decisions from an epic. Marks concerns and open questions. | Write code. Approve its own spec. |
+| **test-author** | Agent, Sonnet (Opus for `security` tasks) | Writes failing tests from the acceptance criteria. Commits them first. | Write implementation code. |
+| **implementer** | Agent, Sonnet | Makes the tests pass in its own worktree. For UI tasks: implement → screenshot → compare → adjust (max 3 rounds). Opens the PR. | Change the test-author's tests. Merge. |
+| **verifier** | Agent, Sonnet, fresh context, tools `Bash`, `Read` | Runs `make check` and `make integration`. Checks each acceptance criterion. "Do not fix anything; report only." | Edit files. |
+| **reviewer** | Agent, Opus, fresh context | Reviews the PR with `REVIEW.md` ([REVIEW.md](/process/guardrails.md)): Bugs, Security, Compliance. Records findings. | Edit files. Approve or merge. |
+| **security-reviewer** | Agent, Opus, fresh context | Reviews against the threat model for every `security` task, and does the H4 review. | Edit files. |
+| **spec-keeper** | Agent, Sonnet | After a merge, updates the as-built specs and their OKF trust fields. | Change behaviour. |
+| **scout** | Agent, Haiku | Lookups: Hex versions, hexdocs, changelogs, CVEs. Writes the answer into the issue. | Edit files. |
+
+The agent definitions go in `.claude/agents/<role>.md`. S0 confirmed how to enforce the role limits:
+
+| Control | Mechanism (Claude Code docs, S0) |
+|---|---|
+| Tools per role | Frontmatter `tools:` / `disallowedTools:`. The verifier, reviewers and scout get no `Edit` and no `Write`. |
+| Paths per role | One script `.claude/hooks/guard.sh` on PreToolUse. The hook input has **`agent_type`** (the role name) and `agent_id`. The script has one table: role → allowed write paths. Only `architect` and `spec-keeper` write in `specs/`; only `test-author` and `implementer` write in `lib/`, `test/`, `assets/`, `config/`. |
+| Role-only hooks | Frontmatter `hooks:` (they run only while that agent runs). Used for the test-tamper check of the implementer. |
+| Worktrees | Frontmatter `isolation: worktree` for `test-author` and `implementer`. Project settings and hooks come from the main checkout. A worktree with changes stays until cleanup, so the orchestrator removes it after merge. The branch name is not documented, so the agent creates `task/<issue-id>` itself. |
+| Result required | `SubagentStop` hook: it reads the task ID from the agent's last message (`TASK: <id>`) and blocks the stop (exit 2) until a `RESULT:` comment exists on that issue. |
+| Model | Frontmatter `model:` (Opus / Sonnet / Haiku per [roles](/process/roles.md) table). |
+
+For this project only, this replaces the global rule "the main session keeps review and
+verification". The project `CLAUDE.md` states this.
+
+# Citations
+
+1. [Guardrails](/process/guardrails.md)
