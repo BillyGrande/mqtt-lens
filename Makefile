@@ -8,6 +8,8 @@ check:
 	mix compile --warnings-as-errors
 	mix format --check-formatted
 	mix credo --strict
+	scripts/ci/sobelow-skips.sh
+	bash scripts/ci/test/sobelow-skips_test.sh
 	mix sobelow --exit --threshold low
 	mix deps.audit
 	mix hex.audit
