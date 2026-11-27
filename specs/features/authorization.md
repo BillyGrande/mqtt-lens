@@ -2,11 +2,14 @@
 type: feature
 title: Authorization
 description: Role model, server-side checks and the LiveView event rule.
-status: draft
+status: approved
 tags: [authz, security]
 generated:
   by: claude-sonnet-5-5
   at: 2026-11-24T10:19:47Z
+verified:
+  - by: human:BillyGrande
+    at: 2026-11-28T00:00:00Z
 x-mqttlens-source: docs/DESIGN.md §5
 ---
 
