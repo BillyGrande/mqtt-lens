@@ -58,6 +58,12 @@ Verify:       make check && mix test test/mqtt_lens/auth
 Out of scope: what the agent must not touch
 ```
 
+Rules for the task content:
+
+- Every task has a `Verify` line. Until M2, it is the task's own command.
+- Each acceptance criterion must be checkable by the verifier on the PR.
+- An outcome of the loop or of the whole epic goes to the epic, not to a task.
+
 Agents write their result as one comment:
 
 ```
