@@ -22,6 +22,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # full history: test-tamper reads the commits of the PR
+
+      - name: Test-tamper check (frozen test files)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci/test-tamper.sh "${PR_BASE}" "${PR_HEAD}"
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
@@ -37,7 +45,9 @@ jobs:
           restore-keys: |
             mix-${{ runner.os }}-
 
-      - name: Fetch dependencies
+      # make setup: deps.get, assets.setup, tool-sums.sh (SHA-256 of the binaries,
+      # before they first run), then assets.build.
+      - name: Fetch dependencies and check tool SHA-256
         run: make setup
 
       - name: "Unsafe pattern grep (raw, safe tuples, String.to_atom, atom keys)"
