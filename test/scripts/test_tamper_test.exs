@@ -4,6 +4,16 @@ defmodule MqttLens.TestTamperScriptTest do
   # It reads the git repository of the current directory. Exit 0 = pass, exit 1 = fail.
   # The files that a "Tests-Committed: <id>" commit added are frozen for the later
   # commits in BASE..HEAD that have no such trailer line.
+  # Hardened by ml-1a7.5:
+  #   - Only a real git trailer counts (%(trailers:key=Tests-Committed,valueonly)), and
+  #     its value must match the guard.sh pattern (one token, no white space).
+  #   - After the first trailer commit, a commit without the trailer must not add,
+  #     modify, delete, rename or change the mode of a path under test/ or of
+  #     config/test.exs. Before it, such a commit must not add or change a path under
+  #     test/.
+  #   - A range with no trailer commit that changes a path under lib/ fails. A range
+  #     that changes docs or scripts only passes with a notice.
+  #   - A shallow repository fails.
   use ExUnit.Case, async: true
 
   @script Path.expand("../../scripts/ci/test-tamper.sh", __DIR__)
@@ -144,7 +154,10 @@ defmodule MqttLens.TestTamperScriptTest do
       assert {_, 0} = run(repo, base, head(repo))
     end
 
-    test "passes when later commits without the trailer change other files only",
+    # ml-1a7.5 (stricter): was "passes when later commits without the trailer change
+    # other files only" and expected exit 0. A commit without the trailer after the
+    # trailer commit must not add a path under test/, so the result is now exit 1.
+    test "fails when a later commit without the trailer adds another file under test/",
          %{repo: repo, base: base} do
       tests_committed(repo)
       write(repo, "lib/probe.ex", "defmodule Probe do\nend\n")
@@ -152,7 +165,8 @@ defmodule MqttLens.TestTamperScriptTest do
       write(repo, "test/other_test.exs", "defmodule OtherTest do\nend\n")
       commit(repo, "test: other")
 
-      assert {_, 0} = run(repo, base, head(repo))
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ "test/other_test.exs"
     end
 
     test "freezes the files of each trailer commit", %{repo: repo, base: base} do
@@ -167,12 +181,15 @@ defmodule MqttLens.TestTamperScriptTest do
       assert out =~ "test/second_test.exs"
     end
 
-    test "passes with a notice when the range has no trailer commit",
+    # ml-1a7.5 (stricter): was "passes with a notice when the range has no trailer
+    # commit" and expected exit 0 with a notice. A range with no trailer commit that
+    # changes a path under lib/ now fails (exit 1).
+    test "fails when the range has no trailer commit and changes lib/",
          %{repo: repo, base: base} do
       write(repo, "lib/probe.ex", "defmodule Probe do\nend\n")
       commit(repo, "feat: probe")
 
-      assert {out, 0} = run(repo, base, head(repo))
+      assert {out, 1} = run(repo, base, head(repo))
       assert out =~ "Tests-Committed"
     end
   end
@@ -267,5 +284,358 @@ defmodule MqttLens.TestTamperScriptTest do
 
   test "CI runs the test-tamper check" do
     assert File.read!(@ci_yml) =~ "scripts/ci/test-tamper.sh"
+  end
+
+  # --- ml-1a7.5 ---------------------------------------------------------------
+
+  @helper "test/test_helper.exs"
+  @support "test/support/probe_case.ex"
+  @config_test "config/test.exs"
+
+  # Commits a test harness (test_helper, a support module, config/test.exs) and a lib
+  # file. Returns the SHA. Use it as BASE, so these files exist before the range.
+  defp harness(repo) do
+    write(repo, @helper, "ExUnit.start()\n")
+    write(repo, @support, "defmodule ProbeCase do\nend\n")
+    write(repo, @config_test, "import Config\n")
+    write(repo, "lib/app.ex", "defmodule App do\nend\n")
+    commit(repo, "chore: harness")
+  end
+
+  defp shallow_clone(repo, depth) do
+    clone = repo <> "-shallow"
+    on_exit(fn -> File.rm_rf!(clone) end)
+
+    {_, 0} =
+      System.cmd(
+        "git",
+        ["clone", "-q", "--depth", "#{depth}", "--no-single-branch", "file://" <> repo, clone],
+        env: @git_env,
+        stderr_to_stdout: true
+      )
+
+    clone
+  end
+
+  describe "freeze of test/ and config/test.exs after the first trailer commit (ml-1a7.4.5)" do
+    setup %{repo: repo} do
+      {:ok, base: harness(repo)}
+    end
+
+    test "fails when a later commit without the trailer adds a file under test/",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, "test/extra_test.exs", "defmodule ExtraTest do\nend\n")
+      bad = commit(repo, "fix: add a test")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ "test/extra_test.exs"
+      assert out =~ String.slice(bad, 0, 7)
+    end
+
+    test "fails when a later commit without the trailer modifies test/test_helper.exs",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, @helper, "ExUnit.start(exclude: [:test])\n")
+      commit(repo, "fix: exclude the tests")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @helper
+    end
+
+    test "fails when a later commit without the trailer deletes a file under test/support/",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      File.rm!(Path.join(repo, @support))
+      commit(repo, "fix: drop the case")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @support
+    end
+
+    test "fails when a later commit without the trailer renames a file under test/",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      git(repo, ["mv", @support, "test/support/renamed_case.ex"])
+      commit(repo, "refactor: rename the case")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @support
+    end
+
+    test "fails when a later commit without the trailer changes only the mode of a test file",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      File.chmod!(Path.join(repo, @helper), 0o755)
+      commit(repo, "chore: mode")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @helper
+    end
+
+    test "fails when a later commit without the trailer modifies a test file that the trailer commit modified",
+         %{repo: repo, base: base} do
+      write(repo, @helper, "ExUnit.start(capture_log: true)\n")
+      tests_committed(repo)
+      write(repo, @helper, "ExUnit.start()\n")
+      commit(repo, "fix: revert the helper")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @helper
+    end
+
+    test "fails when a later commit without the trailer modifies config/test.exs",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, @config_test, "import Config\nconfig :logger, level: :none\n")
+      commit(repo, "chore: test config")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @config_test
+    end
+
+    test "fails when a later commit without the trailer deletes config/test.exs",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      File.rm!(Path.join(repo, @config_test))
+      commit(repo, "chore: drop the test config")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @config_test
+    end
+
+    test "fails when a later commit without the trailer adds config/test.exs",
+         %{repo: repo, base: base} do
+      File.rm!(Path.join(repo, @config_test))
+      tests_committed(repo)
+      write(repo, @config_test, "import Config\n")
+      commit(repo, "chore: add the test config")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @config_test
+    end
+
+    test "passes when a later commit without the trailer changes lib/, config/config.exs and paths that only contain the word test",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, "lib/app.ex", "defmodule App do\n  def x, do: 1\nend\n")
+      write(repo, "lib/app/test/helper.ex", "defmodule App.Test.Helper do\nend\n")
+      write(repo, "config/config.exs", "import Config\n")
+      write(repo, "docs/test/notes.md", "notes\n")
+      write(repo, "test_data.md", "data\n")
+      commit(repo, "feat: app")
+
+      assert {_, 0} = run(repo, base, head(repo))
+    end
+  end
+
+  describe "test/ before the first trailer commit (ml-1a7.4.5)" do
+    setup %{repo: repo} do
+      {:ok, base: harness(repo)}
+    end
+
+    test "fails when a commit without the trailer adds a file under test/ before the trailer commit",
+         %{repo: repo, base: base} do
+      write(repo, "test/early_test.exs", "defmodule EarlyTest do\nend\n")
+      bad = commit(repo, "test: early")
+      tests_committed(repo)
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ "test/early_test.exs"
+      assert out =~ String.slice(bad, 0, 7)
+    end
+
+    test "fails when a commit without the trailer modifies a file under test/ before the trailer commit",
+         %{repo: repo, base: base} do
+      write(repo, @helper, "ExUnit.start(exclude: [:test])\n")
+      commit(repo, "chore: helper")
+      tests_committed(repo)
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @helper
+    end
+
+    test "fails when a range with no trailer commit adds a file under test/",
+         %{repo: repo, base: base} do
+      write(repo, "test/early_test.exs", "defmodule EarlyTest do\nend\n")
+      commit(repo, "test: early")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ "test/early_test.exs"
+    end
+
+    test "passes when a commit before the trailer commit changes lib/ only",
+         %{repo: repo, base: base} do
+      write(repo, "lib/app.ex", "defmodule App do\n  def x, do: 1\nend\n")
+      commit(repo, "chore: prepare")
+      tests_committed(repo)
+
+      assert {_, 0} = run(repo, base, head(repo))
+    end
+  end
+
+  describe "range with no trailer commit (ml-1a7.4.3)" do
+    setup %{repo: repo} do
+      {:ok, base: harness(repo)}
+    end
+
+    test "fails when a commit modifies a file under lib/", %{repo: repo, base: base} do
+      write(repo, "lib/app.ex", "defmodule App do\n  def x, do: 1\nend\n")
+      commit(repo, "feat: app")
+
+      assert {_, 1} = run(repo, base, head(repo))
+    end
+
+    test "fails when a commit deletes a file under lib/", %{repo: repo, base: base} do
+      File.rm!(Path.join(repo, "lib/app.ex"))
+      commit(repo, "refactor: drop app")
+
+      assert {_, 1} = run(repo, base, head(repo))
+    end
+
+    test "fails when a commit adds a file deep under lib/", %{repo: repo, base: base} do
+      write(repo, "lib/mqtt_lens/deep/probe.ex", "defmodule Deep do\nend\n")
+      commit(repo, "feat: deep")
+
+      assert {_, 1} = run(repo, base, head(repo))
+    end
+
+    test "fails when only one of several commits changes lib/", %{repo: repo, base: base} do
+      write(repo, "specs/notes.md", "notes\n")
+      commit(repo, "docs: notes")
+      write(repo, "lib/app.ex", "defmodule App do\n  def x, do: 1\nend\n")
+      commit(repo, "feat: app")
+      write(repo, "specs/more.md", "more\n")
+      commit(repo, "docs: more")
+
+      assert {_, 1} = run(repo, base, head(repo))
+    end
+
+    test "passes with a notice when the range changes docs only", %{repo: repo, base: base} do
+      write(repo, "README.md", "probe, more\n")
+      write(repo, "specs/notes.md", "notes\n")
+      commit(repo, "docs: notes")
+
+      assert {out, 0} = run(repo, base, head(repo))
+      assert out =~ "Tests-Committed"
+    end
+
+    test "passes with a notice when the range changes scripts only",
+         %{repo: repo, base: base} do
+      write(repo, "scripts/ci/probe.sh", "#!/usr/bin/env bash\nexit 0\n")
+      commit(repo, "ci: probe")
+
+      assert {out, 0} = run(repo, base, head(repo))
+      assert out =~ "Tests-Committed"
+    end
+
+    test "passes with a notice for paths that only contain the word lib",
+         %{repo: repo, base: base} do
+      write(repo, "docs/lib/notes.md", "notes\n")
+      write(repo, "library.md", "library\n")
+      commit(repo, "docs: lib notes")
+
+      assert {out, 0} = run(repo, base, head(repo))
+      assert out =~ "Tests-Committed"
+    end
+  end
+
+  describe "only a real Tests-Committed trailer counts (ml-1a7.4.2)" do
+    # Each case: a real trailer commit freezes the probe test. Then a commit with a
+    # Tests-Committed text that is NOT a valid trailer changes the frozen file. That
+    # commit counts as a commit without the trailer, so the gate must fail.
+    @weakened "defmodule ProbeTest do\n  # weakened\nend\n"
+
+    test "fails when the Tests-Committed text is the subject line",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, @frozen, @weakened)
+      commit(repo, "Tests-Committed: ml-x.1")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @frozen
+    end
+
+    test "fails when the Tests-Committed text is in a body paragraph that is not the trailer block",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, @frozen, @weakened)
+      commit(repo, "fix: weaken the test\n\nTests-Committed: ml-x.1\n\nMore prose after it.")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @frozen
+    end
+
+    test "fails when the trailer value is not one task-id token",
+         %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, @frozen, @weakened)
+      commit(repo, "fix: weaken the test\n\nTests-Committed: ml x.1")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @frozen
+    end
+
+    test "fails when the trailer value is empty", %{repo: repo, base: base} do
+      tests_committed(repo)
+      write(repo, @frozen, @weakened)
+      commit(repo, "fix: weaken the test\n\nTests-Committed:")
+
+      assert {out, 1} = run(repo, base, head(repo))
+      assert out =~ @frozen
+    end
+
+    test "treats a range whose only Tests-Committed text is in the body as a range with no trailer",
+         %{repo: repo, base: base} do
+      write(repo, "lib/probe.ex", "defmodule Probe do\nend\n")
+      commit(repo, "feat: probe\n\nTests-Committed: ml-x.1\n\nNot a trailer.")
+
+      assert {_, 1} = run(repo, base, head(repo))
+    end
+
+    test "counts a trailer in a trailer block with other trailers",
+         %{repo: repo, base: base} do
+      write(repo, @frozen, "defmodule ProbeTest do\nend\n")
+
+      commit(
+        repo,
+        "test: probe (ml-x.1)\n\nTests-Committed: ml-x.1\n" <>
+          "Co-Authored-By: Probe <probe@example.invalid>\n" <>
+          "Claude-Session: https://example.invalid/session"
+      )
+
+      write(repo, "lib/probe.ex", "defmodule Probe do\nend\n")
+      commit(repo, "feat: probe")
+
+      assert {out, 0} = run(repo, base, head(repo))
+      assert out =~ "ok"
+    end
+  end
+
+  describe "shallow repository (ml-1a7.4.9)" do
+    test "fails in a shallow clone, also when BASE and HEAD are both present",
+         %{repo: repo, base: base} do
+      # Full history: a commit without the trailer weakens a frozen file, so the gate
+      # fails. The shallow clone (depth 2) cuts that commit off, so a gate that does
+      # not check for a shallow repository sees only a second trailer commit and a
+      # docs commit.
+      git(repo, ["branch", "base-ref", base])
+      tests_committed(repo)
+      write(repo, @frozen, "defmodule ProbeTest do\n  # weakened\nend\n")
+      commit(repo, "fix: weaken the test")
+      write(repo, "test/second_test.exs", "defmodule SecondTest do\nend\n")
+      commit(repo, "test: second (ml-x.2)\n\nTests-Committed: ml-x.2")
+      write(repo, "specs/notes.md", "notes\n")
+      top = commit(repo, "docs: notes")
+
+      assert {_, 1} = run(repo, base, top)
+
+      clone = shallow_clone(repo, 2)
+      assert git(clone, ["rev-parse", "--is-shallow-repository"]) == "true"
+      assert git(clone, ["cat-file", "-t", base]) == "commit"
+
+      assert {out, 1} = run(clone, base, top)
+      assert out =~ "shallow"
+    end
   end
 end
