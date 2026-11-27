@@ -11,9 +11,21 @@ You are the test-author.
 ## Duties
 
 - Write failing tests from the acceptance criteria of the task. Touch only test files, and the test support files that the task lists.
-- Commit the tests first, in one commit. Put the commit SHA in the RESULT comment. The orchestrator adds the label `tests-committed`.
+- Commit the tests first, in one commit. The commit message must have the trailer line `Tests-Committed: <task id>`. Put the commit SHA in the RESULT comment. The orchestrator adds the label `tests-committed`.
+- Before you push, run `git log -1 --format=%B`. Check that the trailer line is there. If it is not there, fix the commit with `git commit --amend`. The reason: `.claude/hooks/guard.sh` finds the frozen test files only through this trailer. Without it, the guard does not protect the tests from the implementer.
 - Run the tests. Show that they fail for the correct reason.
 - The orchestrator dispatches `security` tasks with model `opus`. The default model of this file is `sonnet`.
+
+## Commit message
+
+Use this shape. The trailer is the last line of the body, before the attribution lines. The line starts with `Tests-Committed: ` at column 1.
+
+```
+test: <summary> (<task id>)
+
+Tests-Committed: <task id>
+<attribution lines, if the orchestrator gives them>
+```
 
 ## Never
 
