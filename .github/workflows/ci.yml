@@ -38,7 +38,7 @@ jobs:
       - name: Fetch dependencies
         run: make setup
 
-      - name: Unsafe pattern grep (raw, {:safe, String.to_atom, keys: :atoms)
+      - name: "Unsafe pattern grep (raw, safe tuples, String.to_atom, atom keys)"
         run: scripts/ci/unsafe-grep.sh
 
       - name: make check
