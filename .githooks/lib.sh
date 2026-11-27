@@ -17,15 +17,27 @@ require_denylist() {
 # scan_stream LABEL: read text on stdin, report hits, return 1 on any hit.
 # Reports the line number of the deny-list entry, never the entry text or the matched text.
 scan_stream() {
-  local label="$1" text pat n=0 rc=0
+  local label="$1" text pat n=0 rc=0 g
   text="$(cat)"
   while IFS= read -r pat; do
     n=$((n + 1))
     [[ "$pat" =~ ^[[:space:]]*(#|$) ]] && continue
-    if printf '%s\n' "$text" | grep -iqE -e "$pat"; then
-      echo "guardrail: deny-list hit in $label: deny-list line $n" >&2
-      rc=1
-    fi
+    # No pipe into grep -q: an early exit of grep would SIGPIPE the writer and, with
+    # pipefail, turn a hit into "no hit" on input over the pipe buffer. Here-string only.
+    # grep status: 0 = hit, 1 = no hit, anything else = error (fail closed).
+    g=0
+    grep -iqE -e "$pat" <<<"$text" 2>/dev/null || g=$?
+    case "$g" in
+      0)
+        echo "guardrail: deny-list hit in $label: deny-list line $n" >&2
+        rc=1
+        ;;
+      1) ;;
+      *)
+        echo "guardrail: deny-list line $n is not a valid regex (grep exit $g); failing closed" >&2
+        rc=1
+        ;;
+    esac
   done < "$DENYLIST"
   return "$rc"
 }
@@ -33,7 +45,7 @@ scan_stream() {
 # scan_diff LABEL: read a unified diff on stdin, scan only added lines
 # and report file + deny-list line number (never the entry text).
 scan_diff() {
-  local label="$1" file="" line rc=0 pat n
+  local label="$1" file="" line rc=0 pat n g
   while IFS= read -r line; do
     case "$line" in
       "+++ b/"*) file="${line#+++ b/}" ;;
@@ -43,10 +55,19 @@ scan_diff() {
         while IFS= read -r pat; do
           n=$((n + 1))
           [[ "$pat" =~ ^[[:space:]]*(#|$) ]] && continue
-          if printf '%s\n' "${line:1}" | grep -iqE -e "$pat"; then
-            echo "guardrail: deny-list hit in $label: file=${file:-?} deny-list line $n" >&2
-            rc=1
-          fi
+          g=0
+          grep -iqE -e "$pat" <<<"${line:1}" 2>/dev/null || g=$?
+          case "$g" in
+            0)
+              echo "guardrail: deny-list hit in $label: file=${file:-?} deny-list line $n" >&2
+              rc=1
+              ;;
+            1) ;;
+            *)
+              echo "guardrail: deny-list line $n is not a valid regex (grep exit $g); failing closed" >&2
+              rc=1
+              ;;
+          esac
         done < "$DENYLIST"
         ;;
     esac
