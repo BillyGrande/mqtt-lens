@@ -2,6 +2,7 @@
 
 ## 2026-11-27
 
+- Fixed the `bd` commands in the process specs (ml-2p3.7). The claim command is `bd update <id> --claim` only, because `bd` rejects `--if-status` with `--claim`. Added the close step: after the merge, the orchestrator runs `bd close <id> --force -r <reason>` when the task has no open children.
 - Added the repo `CLAUDE.md` (commands, rules, the override of the global review rule) and `REVIEW.md` (reviewer rules from guardrails).
 - Fixed Spike S0 item 6: it shows Done 2026-11-24.
 
