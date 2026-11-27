@@ -117,8 +117,8 @@ defmodule MqttLens.Config do
   end
 
   defp parse_line(line, settings, section, where) do
-    with [_, key, raw] <- Regex.run(~r/\A([A-Za-z0-9_-]+)\s*=\s*(.+)\z/, line),
-         {:ok, value} <- JSON.decode(raw),
+    with [_, key, value_text] <- Regex.run(~r/\A([A-Za-z0-9_-]+)\s*=\s*(.+)\z/, line),
+         {:ok, value} <- JSON.decode(value_text),
          true <- simple_value?(value) do
       {put_value(settings, section, key, value, where), section}
     else
