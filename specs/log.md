@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-27
+
+- Added the repo `CLAUDE.md` (commands, rules, the override of the global review rule) and `REVIEW.md` (reviewer rules from guardrails).
+- Fixed Spike S0 item 6: it shows Done 2026-11-24.
+
 ## 2026-11-24
 
 - Closed Spike S0 items 7, 8 and 9: public repo and private beads repo created, repo-local identity, deny-list hooks in `.githooks/`, branch protection and security settings, beads in server mode with the Dolt remote on the private repo, telemetry off.
