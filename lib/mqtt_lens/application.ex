@@ -9,7 +9,6 @@ defmodule MqttLens.Application do
   def start(_type, _args) do
     children = [
       MqttLensWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:mqtt_lens, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: MqttLens.PubSub},
       # Start a worker by calling: MqttLens.Worker.start_link(arg)
       # {MqttLens.Worker, arg},
