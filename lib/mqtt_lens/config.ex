@@ -23,9 +23,9 @@ defmodule MqttLens.Config do
   @min_secret_key_base_bytes 64
   @min_salt_bytes 8
 
-  @host_re ~r/\A[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\z/
-  @origin_re ~r|\Ahttps://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d{1,5}))?\z|
-  @issuer_re ~r|\Ahttps://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d{1,5}))?(?:/[^\s\x00-\x1f\x7f]*)?\z|
+  @host_re ~r/\A[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\z/
+  @origin_re ~r|\Ahttps://([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d{1,5}))?\z|
+  @issuer_re ~r|\Ahttps://([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d{1,5}))?(?:/[^\s\x00-\x1f\x7f]*)?\z|
 
   @doc """
   Validate `settings` and read the secrets from `secrets_dir`.
@@ -185,8 +185,8 @@ defmodule MqttLens.Config do
   defp valid_port_match?(re, string) do
     case Regex.run(re, string) do
       nil -> false
-      [_, _host, _tail] -> true
-      [_, _host, _tail, port] -> port_ok?(port)
+      [_, _host] -> true
+      [_, _host, port] -> port_ok?(port)
     end
   end
 
@@ -228,9 +228,9 @@ defmodule MqttLens.Config do
 
   defp origin(issuer) do
     case Regex.run(@issuer_re, issuer) do
-      [_, host, _tail] -> "https://" <> host
-      [_, host, _tail, "443"] -> "https://" <> host
-      [_, host, _tail, port] -> "https://#{host}:#{String.to_integer(port)}"
+      [_, host] -> "https://" <> host
+      [_, host, "443"] -> "https://" <> host
+      [_, host, port] -> "https://#{host}:#{String.to_integer(port)}"
     end
   end
 
