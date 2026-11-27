@@ -9,6 +9,8 @@ defmodule MqttLens.Config do
   Spec: architecture/deployment.md#configuration-and-secrets.
   """
 
+  alias MqttLens.Config.Files
+
   defmodule Error do
     @moduledoc "Raised when the startup configuration is not valid."
     defexception [:message]
@@ -80,7 +82,7 @@ defmodule MqttLens.Config do
   # The path comes from operator config (an env var), not from a request.
   @spec read_settings!(Path.t()) :: map()
   def read_settings!(path) do
-    case File.read(path) do
+    case Files.read(path) do
       {:ok, content} ->
         parse_settings!(content, path)
 
@@ -234,7 +236,7 @@ defmodule MqttLens.Config do
   end
 
   defp read_secrets(dir) do
-    if File.dir?(dir) do
+    if Files.dir?(dir) do
       results = Map.new(@secret_names, &{&1, read_secret(dir, &1)})
 
       secrets =
@@ -249,7 +251,7 @@ defmodule MqttLens.Config do
 
   # `dir` is operator config and `name` is one of a fixed list.
   defp read_secret(dir, name) do
-    case File.read(Path.join(dir, name)) do
+    case Files.read_in(dir, name) do
       {:ok, content} -> check_secret(name, String.trim(content))
       {:error, _} -> {:error, "secret #{name} is missing or unreadable"}
     end
