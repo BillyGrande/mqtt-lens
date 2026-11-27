@@ -24,12 +24,11 @@ You are the implementer.
 
 ## Start protocol
 
-0. Before you do any work, run `git log --grep=^Tests-Committed: main..HEAD`. It must show the tests commit. If it shows nothing, stop. Add a comment with `RESULT: fail` and the reason "no Tests-Committed trailer". The reason: `.claude/hooks/guard.sh` finds the frozen test files only through this trailer. Without it, the guard does not protect the tests.
-
 1. Read the task: `bd show <id> --json` and `bd comments <id> --json`. Read each spec that the task links.
 2. Claim the task: `BEADS_ACTOR=implementer bd update <id> --claim`. The claim is atomic. It fails if another actor holds a live claim. Do not add `--if-status`. If the claim fails, stop and report. Do not work on the task.
 3. Put `BEADS_ACTOR=implementer` on every `bd` command.
-4. Use the branch `task/<issue-id>`. Create it yourself if it does not exist.
+4. Continue the branch of the test-author. Do not start a new branch. Run `git fetch origin task/<issue-id>`, then `git checkout -B task/<issue-id> origin/task/<issue-id>`. If the remote branch does not exist, stop. Add a comment with `RESULT: fail` and the reason "no tests branch".
+5. Run `git log --grep='^Tests-Committed: <issue-id>' main..HEAD`. It must show the tests commit. If it shows nothing, stop. Add a comment with `RESULT: fail` and the reason "no Tests-Committed trailer". The reason: `.claude/hooks/guard.sh` finds the frozen test files only through this trailer. Without it, the guard does not protect the tests.
 
 ## End protocol
 
