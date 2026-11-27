@@ -17,11 +17,13 @@ fi
 rc=0
 for f in "${files[@]}"; do
   [ -f "$f" ] || continue
+  n=0
   while IFS= read -r pat; do
-    case "$pat" in ''|'#'*) continue ;; esac
-    if grep -IinE -e "$pat" -- "$f" >/dev/null 2>&1; then
-      echo "denylist-scan: hit file=$f pattern=$pat" >&2
-      grep -IinE -e "$pat" -- "$f" | head -3 | sed 's/^/    /' >&2
+    n=$((n + 1))
+    [[ "$pat" =~ ^[[:space:]]*(#|$) ]] && continue
+    if grep -IiqE -e "$pat" -- "$f" 2>/dev/null; then
+      # Print the deny-list line number, never the entry text or the matched text.
+      echo "denylist-scan: hit file=$f deny-list line $n" >&2
       rc=1
     fi
   done < "$DENYLIST"

@@ -14,31 +14,37 @@ require_denylist() {
   fi
 }
 
-# scan_stream LABEL: read text on stdin, print hits, return 1 on any hit.
+# scan_stream LABEL: read text on stdin, report hits, return 1 on any hit.
+# Reports the line number of the deny-list entry, never the entry text or the matched text.
 scan_stream() {
-  local label="$1" hits
-  hits="$(grep -inEf <(grep -vE '^[[:space:]]*(#|$)' "$DENYLIST") || true)"
-  if [ -n "$hits" ]; then
-    echo "guardrail: deny-list hit in $label:" >&2
-    printf "%s\n" "${hits//$'\n'/$'\n  '}" >&2
-    return 1
-  fi
-  return 0
+  local label="$1" text pat n=0 rc=0
+  text="$(cat)"
+  while IFS= read -r pat; do
+    n=$((n + 1))
+    [[ "$pat" =~ ^[[:space:]]*(#|$) ]] && continue
+    if printf '%s\n' "$text" | grep -iqE -e "$pat"; then
+      echo "guardrail: deny-list hit in $label: deny-list line $n" >&2
+      rc=1
+    fi
+  done < "$DENYLIST"
+  return "$rc"
 }
 
-# scan_added_lines LABEL: read a unified diff on stdin, scan only added lines
-# and report file + matching pattern.
+# scan_diff LABEL: read a unified diff on stdin, scan only added lines
+# and report file + deny-list line number (never the entry text).
 scan_diff() {
-  local label="$1" file="" line rc=0 pat
+  local label="$1" file="" line rc=0 pat n
   while IFS= read -r line; do
     case "$line" in
       "+++ b/"*) file="${line#+++ b/}" ;;
       "+++ "*) ;;
       "+"*)
+        n=0
         while IFS= read -r pat; do
-          case "$pat" in ''|'#'*) continue ;; esac
+          n=$((n + 1))
+          [[ "$pat" =~ ^[[:space:]]*(#|$) ]] && continue
           if printf '%s\n' "${line:1}" | grep -iqE -e "$pat"; then
-            echo "guardrail: deny-list hit in $label: file=${file:-?} pattern=$pat" >&2
+            echo "guardrail: deny-list hit in $label: file=${file:-?} deny-list line $n" >&2
             rc=1
           fi
         done < "$DENYLIST"
