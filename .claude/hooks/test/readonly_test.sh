@@ -86,13 +86,46 @@ echo two >>"$TMP/repo/a.txt"
 run "$(ev SubagentStop verifier k1)"
 expect "commit of a tracked change blocked" 2
 
-# A checkout of an existing branch is not a change: the verifier must check out the task branch.
+# A branch checkout that moves HEAD to another branch is blocked (the old stop allowed it).
+# Changed in ml-2p3.8.1: the verifier now uses a detached checkout in its own worktree.
 mkrepo
 git -C "$TMP/repo" branch task/x
 run "$(ev SubagentStart verifier k2)"
 git -C "$TMP/repo" checkout -q task/x
 run "$(ev SubagentStop verifier k2)"
-expect "branch checkout allowed" 0
+expect "branch checkout blocked" 2 "task/x"
+
+# A branch checkout at the same commit also changes the branch: blocked.
+mkrepo
+git -C "$TMP/repo" branch task/same
+run "$(ev SubagentStart verifier k3)"
+git -C "$TMP/repo" checkout -q task/same
+run "$(ev SubagentStop verifier k3)"
+expect "branch checkout at same commit blocked" 2 "task/same"
+
+# A detached checkout of another commit in a linked worktree is allowed.
+mkrepo
+"${G[@]}" -C "$TMP/repo" commit -q --allow-empty -m second
+git -C "$TMP/repo" worktree add -q -b wtd "$TMP/wt"
+run "$(ev SubagentStart verifier dt1 false "$TMP/wt")"
+git -C "$TMP/wt" checkout -q --detach HEAD~1
+run "$(ev SubagentStop verifier dt1 false "$TMP/wt")"
+expect "detached checkout in worktree allowed" 0
+if [ -e "$TMP/repo/.git/mqtt-lens-ro/dt1" ]; then
+  echo "FAIL snapshot kept after allowed detached checkout"
+  fails=$((fails + 1))
+else
+  pass=$((pass + 1))
+fi
+
+# Moving between detached commits is allowed too.
+mkrepo
+"${G[@]}" -C "$TMP/repo" commit -q --allow-empty -m second
+git -C "$TMP/repo" worktree add -q --detach "$TMP/wt" HEAD
+run "$(ev SubagentStart verifier dt2 false "$TMP/wt")"
+git -C "$TMP/wt" checkout -q --detach HEAD~1
+run "$(ev SubagentStop verifier dt2 false "$TMP/wt")"
+expect "detached to detached allowed" 0
 
 # Pre-existing dirt that does not change is allowed.
 mkrepo
@@ -114,12 +147,55 @@ expect "other type without snapshot allowed" 0
 run "$(printf '{"hook_event_name":"SubagentStop","agent_id":"w3","cwd":"%s"}' "$TMP/repo")"
 expect "no agent_type allowed" 0
 
-# stop_hook_active allowed.
+# Second stop (stop_hook_active=true) with changes: allowed, but the violation is recorded.
 mkrepo
 run "$(ev SubagentStart verifier a1)"
 echo two >>"$TMP/repo/a.txt"
+echo x >"$TMP/repo/extra.txt"
 run "$(ev SubagentStop verifier a1 true)"
-expect "stop_hook_active allowed" 0
+expect "second stop with changes allowed" 0 "a.txt"
+V="$TMP/repo/.git/mqtt-lens-ro/a1.violation"
+if [ -f "$V" ] && grep -q 'a.txt' "$V" && grep -q 'extra.txt' "$V" && grep -q 'verifier' "$V"; then
+  pass=$((pass + 1))
+else
+  echo "FAIL violation file missing or does not name role and paths"
+  fails=$((fails + 1))
+fi
+if [ -f "$TMP/repo/.git/mqtt-lens-ro/a1" ]; then
+  pass=$((pass + 1))
+else
+  echo "FAIL snapshot not kept after a violation"
+  fails=$((fails + 1))
+fi
+
+# Second stop with a new commit: violation too.
+mkrepo
+run "$(ev SubagentStart reviewer a3)"
+"${G[@]}" -C "$TMP/repo" commit -q --allow-empty -m sneaky
+run "$(ev SubagentStop reviewer a3 true)"
+expect "second stop with commit allowed" 0
+if [ -f "$TMP/repo/.git/mqtt-lens-ro/a3.violation" ]; then
+  pass=$((pass + 1))
+else
+  echo "FAIL no violation file for commit on second stop"
+  fails=$((fails + 1))
+fi
+
+# Second stop when clean: snapshot deleted, no violation file.
+mkrepo
+run "$(ev SubagentStart verifier a2)"
+echo two >>"$TMP/repo/a.txt"
+run "$(ev SubagentStop verifier a2)"
+expect "first stop blocked" 2 "a.txt"
+git -C "$TMP/repo" checkout -q -- a.txt
+run "$(ev SubagentStop verifier a2 true)"
+expect "second stop clean allowed" 0
+if [ -e "$TMP/repo/.git/mqtt-lens-ro/a2" ] || [ -e "$TMP/repo/.git/mqtt-lens-ro/a2.violation" ]; then
+  echo "FAIL clean second stop left a snapshot or a violation"
+  fails=$((fails + 1))
+else
+  pass=$((pass + 1))
+fi
 
 # Missing snapshot for a read-only role: block.
 mkrepo
