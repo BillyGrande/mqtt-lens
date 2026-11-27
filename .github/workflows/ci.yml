@@ -10,7 +10,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only PR runs are cancelled: a cancelled push run would leave its commit range unscanned.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -20,7 +21,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # full history: the deny-list scan reads the commits of the PR
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
@@ -47,6 +47,17 @@ jobs:
 
       - name: No native libraries in the prod build
         run: scripts/ci/no-native-libs.sh
+
+  # Own job: the DENYLIST secret must never share a runner with dependency code
+  # (setup-beam, cache, mix, tests). This job has checkout and bash scripts only.
+  denylist:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # full history: the scan reads the commits of the PR
 
       # The scan skips only for PRs from forks (secrets are not available there).
       # In every other case an empty secret is a failure: the gate must not fail open.
