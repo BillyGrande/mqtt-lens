@@ -21,7 +21,7 @@ x-mqttlens-source: docs/DEVELOPMENT.md §4, §11.1
 | Version | `bd` 1.3.4, SHA-256 matches the release `checksums.txt`. `dolt` 2.7.6 (no `checksums.txt`; checked against the GitHub asset digest only). | Pin both versions. Upgrades only through a chore task. |
 | Mode | 3 parallel writers × 90 operations: 0 errors, 0 lost writes in both modes. Embedded 116 s, **server 49 s**. `bd list --json` 0.42 s vs **0.22 s**. | **Server mode** (`bd init --server`): a managed `dolt sql-server` on **127.0.0.1 only**, random port. |
 | Worktrees | All worktrees resolve to the main checkout's `.beads` with no setup. | Agents in worktrees use `bd` directly. |
-| Claim | 3 parallel `--claim` on one issue: exactly 1 winner (3 of 3 runs). Losers exit 1. | Agents claim with `bd update <id> --claim --if-status open`. A failed claim = stop, report to the orchestrator. |
+| Claim | 3 parallel `--claim` on one issue: exactly 1 winner (3 of 3 runs). Losers exit 1. | Agents claim with `bd update <id> --claim`. Do not add `--if-status`: `bd` rejects it with `--claim`. A claim fails if another actor holds a live claim. A failed claim = stop, report to the orchestrator. |
 | Identity | The claim assignee comes from `BEADS_ACTOR`, else git `user.name`. | Each agent runs with `BEADS_ACTOR=<role>` (for example `implementer`). |
 | Reading | `bd list --json` has no description and no comment text. | Agents and the orchestrator use `bd show <id> --json` and `bd comments <id> --json`. |
 | `bd init` | The default writes 19 files: `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `.codex/*`, `.cursor/*`, `.agents/skills/*`, 5 git hooks. It sets `core.hooksPath=.beads/hooks`, which replaces other git hooks. | Init in a sandbox first. Keep only `.beads/` config and the `bd prime` SessionStart hook. Delete Codex, Cursor and `.agents` files. We own `CLAUDE.md`. Our hooks live in `.githooks/` and call the beads hook scripts (one `core.hooksPath`). |
@@ -76,11 +76,11 @@ Follow-ups: <new issue ids>
 | Task under epic | `bd create "Title" -t task --parent <epic> -d "..." --design "..." --acceptance "..." -l ui` |
 | Dependency | `bd dep add <blocked> <blocker>` |
 | Ready work | `bd ready --json` (`-l <label>` to filter) |
-| Claim | `bd update <id> --claim --if-status open` |
+| Claim | `bd update <id> --claim` (no `--if-status`; it fails if another actor holds a live claim) |
 | Full text | `bd show <id> --json`; `bd comments <id> --json` |
 | Result | `bd comment <id> --file result.txt` (or `--stdin`) |
 | Labels | `bd update <id> --add-label x --remove-label y` |
-| Close | `bd close <id> -r "reason"` |
+| Close | Orchestrator only, after the PR is merged and the task has no open children: `bd close <id> --force -r "reason"`. Without `--force`, `bd close` fails on a task that another actor claimed. |
 | Export for scan | `bd export -o /tmp/<file>.jsonl` |
 | Sync | `bd dolt push` / `bd dolt pull`; new clone: `bd bootstrap` |
 

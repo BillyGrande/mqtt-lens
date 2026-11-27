@@ -34,13 +34,14 @@ The orchestrator can be cleared at any time. No compaction and no handoff files 
 
 - Dispatch only tasks from `bd ready` that have the required content ([task content](/process/beads.md)).
 - Each agent gets the issue ID, its role and the worktree path. Nothing more.
-- The agent claims the task (`bd update <id> --claim`) before it starts.
+- The agent claims the task (`bd update <id> --claim`, without `--if-status`) before it starts. A failed claim = the agent stops and reports.
 - **Parallel: up to 3 agents, at the orchestrator's choice.** Run in parallel only when the
   `Files:` lists do not overlap and the tasks are not in a dependency chain. Otherwise run in series.
 - Read-only agents (verifier, reviewers, scout) can run in parallel with builders.
 - Before verify, the branch is rebased on `main`. A rebase conflict → the implementer fixes it in its worktree.
 - All agents run in the background. The orchestrator stays free to talk with the owner.
 - When an agent returns, the orchestrator reads only its RESULT comment and decides the next step.
+- After the PR is merged, the orchestrator checks that the task has no open children (`bd show <id> --json`). Then it runs `bd close <id> --force -r "<reason>"`. The `--force` flag is needed because the implementer holds the claim and `bd close` refuses a different actor.
 - Two failed attempts on the same task → `needs-human`. No third blind retry.
 
 ## Reports
