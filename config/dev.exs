@@ -23,6 +23,9 @@ config :mqtt_lens, MqttLensWeb.Endpoint,
     tailwind: {Tailwind, :install_and_run, [:mqtt_lens, ~w(--watch)]}
   ]
 
+# The ops endpoint (/healthz, /readyz, /metrics) listens on loopback only in dev.
+config :mqtt_lens, MqttLensWeb.OpsEndpoint, http: [ip: {127, 0, 0, 1}]
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed

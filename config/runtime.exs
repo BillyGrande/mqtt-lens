@@ -65,7 +65,7 @@ if config_env() == :prod do
     secret_key_base: app_config.secret_key_base,
     session_signing_salt: app_config.signing_salt,
     session_encryption_salt: app_config.encryption_salt,
-    live_view: [signing_salt: app_config.signing_salt]
+    live_view: [signing_salt: app_config.live_view_salt]
 
   config :mqtt_lens, MqttLensWeb.OpsEndpoint, http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}]
 

@@ -21,9 +21,11 @@ defmodule MqttLens.Config do
   @oidc_keys ~w(issuer)
   @secret_names ~w(secret_key_base signing_salt encryption_salt)
   @min_secret_key_base_bytes 64
+  @min_salt_bytes 8
 
   @host_re ~r/\A[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\z/
-  @origin_re ~r|\Ahttps://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\d{1,5})?\z|
+  @origin_re ~r|\Ahttps://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d{1,5}))?\z|
+  @issuer_re ~r|\Ahttps://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d{1,5}))?(?:/[^\s\x00-\x1f\x7f]*)?\z|
 
   @doc """
   Validate `settings` and read the secrets from `secrets_dir`.
@@ -47,6 +49,7 @@ defmodule MqttLens.Config do
         issuer = settings["oidc"]["issuer"]
 
         Map.merge(secrets, %{
+          live_view_salt: live_view_salt(secrets.signing_salt),
           check_origin: settings["check_origin"],
           public_host: settings["public_host"],
           issuer: issuer,
@@ -60,10 +63,19 @@ defmodule MqttLens.Config do
 
   def load!(_settings, _secrets_dir), do: raise(Error, "settings must be a table")
 
+  # A separate salt for LiveView, derived from the signing salt, so it is not
+  # the same as the session salt and no fourth secret file is needed.
+  defp live_view_salt(signing_salt) do
+    :hmac
+    |> :crypto.mac(:sha256, signing_salt, "mqtt-lens live_view signing salt")
+    |> Base.url_encode64(padding: false)
+  end
+
   @doc """
   Read a settings file. Only a small TOML subset is supported: `[table]`
   headers and `key = value` lines where the value is a string, boolean,
-  number or array in JSON syntax. A missing or unreadable file raises.
+  number or array of these in JSON syntax. Duplicate keys or tables, a table
+  header over a value, and other value types raise `Error`. A missing or unreadable file raises.
   """
   # sobelow_skip ["Traversal.FileModule"]
   # The path comes from operator config (an env var), not from a request.
@@ -95,22 +107,45 @@ defmodule MqttLens.Config do
 
   defp parse_line("[" <> _ = line, settings, _section, where) do
     case Regex.run(~r/\A\[([A-Za-z0-9_-]+)\]\z/, line) do
-      [_, name] -> {Map.put_new(settings, name, %{}), name}
-      _ -> raise Error, "#{where}: unsupported table header"
+      [_, name] ->
+        if Map.has_key?(settings, name),
+          do: raise(Error, "#{where}: #{name} is defined twice"),
+          else: {Map.put(settings, name, %{}), name}
+
+      _ ->
+        raise Error, "#{where}: unsupported table header"
     end
   end
 
   defp parse_line(line, settings, section, where) do
     with [_, key, raw] <- Regex.run(~r/\A([A-Za-z0-9_-]+)\s*=\s*(.+)\z/, line),
-         {:ok, value} <- JSON.decode(raw) do
-      {put_value(settings, section, key, value), section}
+         {:ok, value} <- JSON.decode(raw),
+         true <- simple_value?(value) do
+      {put_value(settings, section, key, value, where), section}
     else
       _ -> raise Error, "#{where}: unsupported or invalid syntax"
     end
   end
 
-  defp put_value(settings, nil, key, value), do: Map.put(settings, key, value)
-  defp put_value(settings, section, key, value), do: put_in(settings, [section, key], value)
+  defp simple_value?(value) when is_binary(value) or is_boolean(value) or is_number(value),
+    do: true
+
+  defp simple_value?(list) when is_list(list),
+    do: Enum.all?(list, &(is_binary(&1) or is_boolean(&1) or is_number(&1)))
+
+  defp simple_value?(_), do: false
+
+  defp put_value(settings, nil, key, value, where) do
+    if Map.has_key?(settings, key),
+      do: raise(Error, "#{where}: #{key} is defined twice"),
+      else: Map.put(settings, key, value)
+  end
+
+  defp put_value(settings, section, key, value, where) do
+    if Map.has_key?(settings[section], key),
+      do: raise(Error, "#{where}: #{section}.#{key} is defined twice"),
+      else: put_in(settings, [section, key], value)
+  end
 
   defp unknown_key_errors(map, allowed, prefix) do
     for key <- Map.keys(map), key not in allowed do
@@ -129,11 +164,14 @@ defmodule MqttLens.Config do
 
   defp public_host_errors(_), do: ["public_host is missing"]
 
-  defp check_origin_errors(%{"check_origin" => [_ | _] = origins}) do
-    for origin <- origins, not (is_binary(origin) and Regex.match?(@origin_re, origin)) do
-      "check_origin entry #{inspect(origin)} is not an exact https:// origin " <>
-        "(scheme, host and optional port; no wildcard, no path)"
-    end
+  defp check_origin_errors(%{"check_origin" => [_ | _] = origins} = settings) do
+    bad =
+      for origin <- origins, not valid_origin?(origin) do
+        "check_origin entry #{inspect(origin)} is not an exact https:// origin " <>
+          "(scheme, host, optional port 1-65535; no wildcard, no path)"
+      end
+
+    bad ++ public_host_origin_errors(settings, origins)
   end
 
   defp check_origin_errors(%{"check_origin" => _}),
@@ -141,13 +179,44 @@ defmodule MqttLens.Config do
 
   defp check_origin_errors(_), do: ["check_origin is missing"]
 
+  defp valid_origin?(origin) when is_binary(origin), do: valid_port_match?(@origin_re, origin)
+  defp valid_origin?(_), do: false
+
+  defp valid_port_match?(re, string) do
+    case Regex.run(re, string) do
+      nil -> false
+      [_, _host, _tail] -> true
+      [_, _host, _tail, port] -> port_ok?(port)
+    end
+  end
+
+  defp port_ok?(port) do
+    String.to_integer(port) in 1..65_535
+  end
+
+  defp public_host_origin_errors(%{"public_host" => host}, origins) when is_binary(host) do
+    present? =
+      Enum.any?(origins, fn origin ->
+        is_binary(origin) and match?([_, ^host | _], Regex.run(@origin_re, origin))
+      end)
+
+    if present?,
+      do: [],
+      else: ["check_origin has no entry for https://#{host} (the public_host)"]
+  end
+
+  defp public_host_origin_errors(_, _), do: []
+
   defp issuer_errors(%{"oidc" => %{} = oidc}) do
     unknown_key_errors(oidc, @oidc_keys, "oidc.") ++
       case oidc do
         %{"issuer" => issuer} ->
-          if valid_https_url?(issuer),
+          if is_binary(issuer) and valid_port_match?(@issuer_re, issuer),
             do: [],
-            else: ["oidc.issuer must be an https:// URL with a host"]
+            else: [
+              "oidc.issuer must be an https:// URL with a plain host, " <>
+                "an optional port 1-65535, and no user info or control characters"
+            ]
 
         _ ->
           ["oidc.issuer is missing"]
@@ -157,15 +226,12 @@ defmodule MqttLens.Config do
   defp issuer_errors(%{"oidc" => _}), do: ["oidc must be a table with an issuer"]
   defp issuer_errors(_), do: ["oidc is missing (oidc.issuer is required)"]
 
-  defp valid_https_url?(url) when is_binary(url) do
-    match?(%URI{scheme: "https", host: host} when is_binary(host) and host != "", URI.parse(url))
-  end
-
-  defp valid_https_url?(_), do: false
-
   defp origin(issuer) do
-    %URI{host: host, port: port} = URI.parse(issuer)
-    if port in [nil, 443], do: "https://" <> host, else: "https://#{host}:#{port}"
+    case Regex.run(@issuer_re, issuer) do
+      [_, host, _tail] -> "https://" <> host
+      [_, host, _tail, "443"] -> "https://" <> host
+      [_, host, _tail, port] -> "https://#{host}:#{String.to_integer(port)}"
+    end
   end
 
   defp read_secrets(dir) do
@@ -195,6 +261,10 @@ defmodule MqttLens.Config do
 
   defp check_secret("secret_key_base", value) when byte_size(value) < @min_secret_key_base_bytes,
     do: {:error, "secret secret_key_base must be at least #{@min_secret_key_base_bytes} bytes"}
+
+  defp check_secret(name, value)
+       when name in ["signing_salt", "encryption_salt"] and byte_size(value) < @min_salt_bytes,
+       do: {:error, "secret #{name} must be at least #{@min_salt_bytes} bytes"}
 
   defp check_secret(_name, value), do: {:ok, value}
 end
