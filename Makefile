@@ -23,5 +23,4 @@ test:
 	mix test
 
 integration:
-	@echo "make integration is not set up yet: docker compose and the integration suite come with M2.3 (ml-1a7)." >&2
-	@exit 1
+	scripts/ci/integration.sh
