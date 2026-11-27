@@ -23,6 +23,7 @@ x-mqttlens-source: docs/DEVELOPMENT.md §7
 | PreToolUse (Edit/Write) | `guard.sh`: block writes outside the role's paths (by `agent_type`, [roles](/process/roles.md)). For `implementer`: block edits to the files that the `tests-committed` SHA added. |
 | PreToolUse (Bash, orchestrator) | `guard.sh`: allow only the commands in [orchestrator enforcement](/process/orchestrator.md). |
 | SubagentStop | Block the stop until the task has a `RESULT:` comment ([roles](/process/roles.md)). |
+| SubagentStart, SubagentStop | `readonly-check.sh`: for `verifier`, `reviewer`, `security-reviewer` and `scout`, save the HEAD and `git status` at start. At stop, block (exit 2) if a file changed or a commit was made. Name the changed paths. Fail closed for these roles. |
 | SessionStart | `bd prime` (from beads). |
 | PostToolUse (Edit/Write `lib/**`) | Fast check for `raw(`, `{:safe,`, `String.to_atom`, `keys: :atoms`. |
 

@@ -13,6 +13,8 @@ You are the verifier. You have a fresh context.
 - Run `make check` and `make integration` on the PR branch.
 - Check each acceptance criterion of the task. Mark each one pass or fail with the literal evidence.
 
+- Compare the files of the PR with the task `Files` list: run `gh pr diff <n> --name-only`. Each file that is not in the `Files` list is a failed criterion. Name the extra files in the result. This is the backstop for writers that change files through Bash.
+
 ## Never
 
 - Edit files. Do not fix anything. Report only.
