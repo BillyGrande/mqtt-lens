@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fail on any sobelow_skip comment in lib/** that is not on the allow-list,
+# Fail on any sobelow_skip comment in lib/** and config/*.exs that is not on the allow-list,
 # and on any .sobelow-skips file. Usage: scripts/ci/sobelow-skips.sh
 # Env (for tests): SOBELOW_SKIPS_ROOT (default: repo root), SOBELOW_SKIPS_ALLOW.
 set -u
@@ -28,9 +28,14 @@ if [ -n "$found" ]; then
   fails=1
 fi
 
-# Every sobelow_skip comment in lib/**.
-if [ -d lib ]; then
-  out="$(grep -rnH 'sobelow_skip' lib)"
+# Every sobelow_skip comment in lib/** and config/*.exs (the files sobelow reads).
+files=()
+[ -d lib ] && files+=(lib)
+if [ -d config ]; then
+  for f in config/*.exs; do [ -e "$f" ] && files+=("$f"); done
+fi
+if [ "${#files[@]}" -gt 0 ]; then
+  out="$(grep -rnH 'sobelow_skip' "${files[@]}")"
   rc=$?
   if [ "$rc" -ge 2 ]; then
     echo "sobelow-skips: grep failed (exit $rc)" >&2
@@ -41,9 +46,18 @@ if [ -d lib ]; then
       file="${line%%:*}"
       rest="${line#*:}"
       rest="${rest#*:}"
-      list="$(printf '%s' "$rest" | sed -n 's/.*sobelow_skip[[:space:]]*\[\(.*\)\].*/\1/p')"
+      # Exactly one skip per line, as a comment: "# sobelow_skip [..]" with
+      # nothing but code before the "#" ignored by sobelow. More than one
+      # skip on a line makes sobelow skip the whole file (and hides checks).
+      count="$(printf '%s' "$rest" | grep -o 'sobelow_skip' | wc -l)"
+      if [ "$count" -ne 1 ]; then
+        echo "sobelow-skips: more than one sobelow_skip on a line in $file: $rest"
+        fails=1
+        continue
+      fi
+      list="$(printf '%s' "$rest" | sed -n 's/^[[:space:]]*#[[:space:]]*sobelow_skip[[:space:]]*\[\([^]]*\)\][[:space:]]*$/\1/p')"
       if [ -z "$list" ]; then
-        echo "sobelow-skips: unparsable skip in $file: $rest"
+        echo "sobelow-skips: unparsable skip in $file (it must be a comment line alone): $rest"
         fails=1
         continue
       fi
