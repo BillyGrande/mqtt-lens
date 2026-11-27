@@ -1,0 +1,8 @@
+[
+  verbose: false,
+  private: false,
+  # Config.CSP is a false positive here: the Content-Security-Policy header
+  # is out of scope for the skeleton (M2.1) and is added in M2.2 (security
+  # headers, ml-1a7). Remove this ignore when M2.2 lands.
+  ignore: ["Config.CSP"]
+]
