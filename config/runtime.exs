@@ -18,6 +18,7 @@ import Config
 # script that automatically sets the env var above.
 if System.get_env("PHX_SERVER") do
   config :mqtt_lens, MqttLensWeb.Endpoint, server: true
+  config :mqtt_lens, MqttLensWeb.OpsEndpoint, server: true
 end
 
 config :mqtt_lens, MqttLensWeb.Endpoint,
@@ -39,30 +40,34 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
-  # The secret key base is used to sign/encrypt cookies and other secrets.
-  # A default value is used in config/dev.exs and config/test.exs but you
-  # want to use a different value for prod and you most likely don't want
-  # to check this value into version control, so we use an environment
-  # variable instead.
-  secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+  # Fail closed: a missing or bad setting or secret raises MqttLens.Config.Error
+  # and the release does not start. Non-secret settings come from
+  # mqtt-lens.toml (ConfigMap), secrets from files (Kubernetes Secret).
+  settings =
+    "MQTT_LENS_CONFIG"
+    |> System.get_env("/etc/mqtt-lens/mqtt-lens.toml")
+    |> MqttLens.Config.read_settings!()
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  app_config =
+    "MQTT_LENS_SECRETS_DIR"
+    |> System.get_env("/run/secrets/mqtt-lens")
+    |> then(&MqttLens.Config.load!(settings, &1))
+
+  config :mqtt_lens, :oidc_origin, app_config.issuer_origin
 
   config :mqtt_lens, MqttLensWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
+    url: [host: app_config.public_host, port: 443, scheme: "https"],
     http: [
       # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://bandit.hexdocs.pm/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
-    secret_key_base: secret_key_base
+    check_origin: app_config.check_origin,
+    secret_key_base: app_config.secret_key_base,
+    session_signing_salt: app_config.signing_salt,
+    session_encryption_salt: app_config.encryption_salt,
+    live_view: [signing_salt: app_config.signing_salt]
+
+  config :mqtt_lens, MqttLensWeb.OpsEndpoint, http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}]
 
   # ## SSL Support
   #

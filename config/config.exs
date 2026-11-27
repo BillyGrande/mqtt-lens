@@ -18,8 +18,17 @@ config :mqtt_lens, MqttLensWeb.Endpoint,
     formats: [html: MqttLensWeb.ErrorHTML, json: MqttLensWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: MqttLens.PubSub,
-  live_view: [signing_salt: "iAbVNfRu"]
+  pubsub_server: MqttLens.PubSub
+
+# The ops endpoint: /healthz, /readyz and /metrics. No HTML.
+config :mqtt_lens, MqttLensWeb.OpsEndpoint,
+  adapter: Bandit.PhoenixAdapter,
+  http: [port: 9090]
+
+# Origin of the Keycloak server, used in the CSP form-action directive.
+# config/runtime.exs sets it from oidc.issuer in prod. The signing and
+# encryption salts are not set here: they come from secret files in prod.
+config :mqtt_lens, :oidc_origin, "https://keycloak.localhost"
 
 # Configure LiveView
 config :phoenix_live_view,

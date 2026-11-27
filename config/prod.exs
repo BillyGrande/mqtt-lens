@@ -12,6 +12,8 @@ config :mqtt_lens, MqttLensWeb.Endpoint, cache_static_manifest: "priv/static/cac
 # Note `:force_ssl` is required to be set at compile-time.
 config :mqtt_lens, MqttLensWeb.Endpoint,
   force_ssl: [
+    # The HSTS header comes from MqttLensWeb.Plugs.SecurityHeaders (spec value).
+    hsts: false,
     rewrite_on: [:x_forwarded_proto],
     exclude: [
       # paths: ["/health"],

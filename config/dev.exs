@@ -13,6 +13,10 @@ config :mqtt_lens, MqttLensWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
+  # Fixed salts for development only. Prod reads them from secret files.
+  session_signing_salt: "dev-session-signing-salt",
+  session_encryption_salt: "dev-session-encryption-salt",
+  live_view: [signing_salt: "dev-live-view-signing-salt"],
   secret_key_base: "LXgUdLIibZ1U2RislpYuNB/dcUmAryxdKlZVvYAN4zw4wABIreIVtmcIF+RguMJj",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:mqtt_lens, ~w(--sourcemap=inline --watch)]},
