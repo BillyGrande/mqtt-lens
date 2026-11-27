@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # PreToolUse (Bash) policy hook. All sessions. Exit 2 blocks the call.
-# Input (stdin JSON): tool_name, tool_input.command, cwd.
+# Input (stdin JSON): tool_name, tool_input.command, cwd, agent_type.
 #
 # Blocks (see specs/process/guardrails.md#hooks):
-#   gh pr merge (and the API routes to a merge); gh release; gh alias
+#   gh pr merge, unless agent_type is absent or "orchestrator" and the args have --rebase
+#   and no --admin, --auto, --squash or --merge (the owner's word is a written rule)
+#   the API routes to a merge, for every session; gh release; gh alias
 #   git push to main/master, force pushes, mass pushes (--all, --mirror, --tags)
 #   git reset --hard while on main (or when the branch cannot be read)
 #   git tag (create); docker/podman/buildah/nerdctl push
@@ -30,6 +32,7 @@ fi
 cmd="$(jq -r '.tool_input.command // ""' <<<"$input" 2>/dev/null)" || block "hook input is not valid JSON"
 cwd="$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null)" || block "hook input is not valid JSON"
 [ -n "$cwd" ] || cwd="$PWD"
+agent="$(jq -r '.agent_type // ""' <<<"$input" 2>/dev/null)" || block "hook input is not valid JSON"
 [ -n "$cmd" ] || exit 0
 
 login_checked=0
@@ -185,6 +188,24 @@ git_tag() {
   done
 }
 
+# gh pr merge: only the main session and the orchestrator, only with --rebase.
+check_merge() {
+  local a rebase=0
+  case "$agent" in
+    "" | orchestrator) ;;
+    *) block "gh pr merge is blocked for role agents" ;;
+  esac
+  for a in "$@"; do
+    case "$a" in
+      --rebase) rebase=1 ;;
+      --admin* | --auto* | --squash* | --merge* | -[!-]*[sm]*)
+        block "gh pr merge with $a is not allowed. Use --rebase only"
+        ;;
+    esac
+  done
+  [ "$rebase" -eq 1 ] || block "gh pr merge needs --rebase"
+}
+
 handle_gh() {
   local -a pos=()
   local a skip=0
@@ -204,7 +225,7 @@ handle_gh() {
     release) block "gh release is owner-only" ;;
     alias) block "gh alias could hide a blocked command" ;;
     pr)
-      [ "$c1" = "merge" ] && block "gh pr merge is owner-only"
+      [ "$c1" = "merge" ] && check_merge "$@"
       ;;
     api)
       for a in "$@"; do

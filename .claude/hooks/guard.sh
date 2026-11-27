@@ -65,6 +65,10 @@ if [ "$role" = "orchestrator" ] && [ "$tool" = "Bash" ]; then
       exit 0
       ;;
   esac
+  # gh pr merge <number> --rebase [--delete-branch]. Digits only. bash-policy.sh checks the rest.
+  if [[ "$cmd" =~ ^gh\ pr\ merge\ [0-9]+\ --rebase(\ --delete-branch)?$ ]]; then
+    exit 0
+  fi
   block "orchestrator Bash: command not in allow-list"
 fi
 

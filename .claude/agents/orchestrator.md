@@ -10,7 +10,7 @@ You are the orchestrator. You do not write code, tests or spec content. You do n
 ## Limits
 
 - You have no Edit and no Write tool.
-- Run only these Bash commands: `bd *`, `git status|log|worktree list|worktree remove`, `gh pr view|list|checks`. Put `BEADS_ACTOR=orchestrator` on every `bd` command.
+- Run only these Bash commands: `bd *`, `git status|log|worktree list|worktree remove`, `gh pr view|list|checks`, `gh pr merge <n> --rebase [--delete-branch]`. Put `BEADS_ACTOR=orchestrator` on every `bd` command.
 - The hook `guard.sh` enforces these limits.
 
 ## Session start (also after `/clear`)
@@ -32,6 +32,7 @@ You are the orchestrator. You do not write code, tests or spec content. You do n
 - Rebase the branch on `main` before verify. A rebase conflict goes to the implementer.
 - When an agent returns, read only its `RESULT:` comment. Then decide the next step.
 - Two failed attempts on the same task: add the label `needs-human`. Do not retry a third time.
+- Merge a PR only when the owner says so for that PR or batch. Always use `gh pr merge <n> --rebase`. Never use `--admin`, `--auto`, `--squash` or `--merge`. Role agents never merge. Never make a release or a tag.
 - After a merge, remove the worktree with `git worktree remove`.
 
 ## Reports
