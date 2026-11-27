@@ -6,9 +6,13 @@
 #   - SubagentStart: save a snapshot (HEAD, git status --porcelain=v1 -uall, HEAD reflog
 #     length) to <git-common-dir>/mqtt-lens-ro/<agent_id>. SubagentStart cannot block.
 #   - SubagentStop: compare. Block (exit 2) and name the changed paths when the status
-#     differs or when a new commit exists. A checkout that only moves HEAD is allowed
-#     (the verifier checks out the task branch). Delete the snapshot on a clean stop.
-#   - stop_hook_active=true: allow (avoids a stop loop).
+#     differs, when a new commit exists or when the checked-out branch changed.
+#     A detached checkout is allowed (the read-only roles use one in their own worktree).
+#     A branch checkout is not allowed. Delete the snapshot on a clean stop.
+#   - stop_hook_active=true (second stop): check again. If the repo is clean, delete the
+#     snapshot. If not, allow the stop (no loop), keep the snapshot, print a warning and
+#     write <git-common-dir>/mqtt-lens-ro/<agent_id>.violation (role, time, problems).
+#     The orchestrator looks for *.violation files.
 #
 # Fail closed for the read-only roles: bad JSON, a missing snapshot, an unreadable repo
 # and an unreadable reflog all block. Other roles are never blocked.
@@ -48,13 +52,14 @@ case "$common" in /*) ;; *) common="$cwd/$common" ;; esac
 dir="$common/mqtt-lens-ro"
 snap="$dir/$safe_id"
 
-# state: print HEAD, reflog length, then the status lines.
+# state: print HEAD, reflog length, branch (empty when detached), then the status lines.
 state() {
-  local head status n
+  local head status n branch
   head="$(gitc rev-parse HEAD 2>/dev/null)" || return 1
+  branch="$(gitc symbolic-ref -q HEAD 2>/dev/null || true)"
   status="$(gitc status --porcelain=v1 -uall 2>/dev/null)" || return 1
   n="$(gitc reflog show HEAD 2>/dev/null | wc -l | tr -d ' ')" || return 1
-  printf '%s\n%s\n%s' "$head" "$n" "$status"
+  printf '%s\n%s\n%s\n%s' "$head" "$n" "$branch" "$status"
 }
 
 case "$event" in
@@ -68,18 +73,18 @@ case "$event" in
   *) block "unknown hook_event_name for read-only role $role." ;;
 esac
 
-[ "$active" = "true" ] && exit 0
-
 [ -r "$snap" ] || block "no snapshot for read-only role $role ($id). Cannot show that the repo is unchanged."
 
 old_head="$(sed -n 1p "$snap")"
 old_n="$(sed -n 2p "$snap")"
-old_status="$(sed -n '3,$p' "$snap")"
+old_branch="$(sed -n 3p "$snap")"
+old_status="$(sed -n '4,$p' "$snap")"
 
 cur="$(state)" || block "cannot read the repo state for $role."
 new_head="$(sed -n 1p <<<"$cur")"
 new_n="$(sed -n 2p <<<"$cur")"
-new_status="$(sed -n '3,$p' <<<"$cur")"
+new_branch="$(sed -n 3p <<<"$cur")"
+new_status="$(sed -n '4,$p' <<<"$cur")"
 
 problems=""
 
@@ -97,7 +102,8 @@ if [ "$old_head" != "$new_head" ]; then
   if [ "$added" -le 0 ]; then
     problems="$problems; HEAD moved ($old_head to $new_head) and the reflog does not explain it"
   else
-    # Only "checkout:" entries are allowed. Anything else (commit, reset, merge, rebase) blocks.
+    # Only "checkout:" entries are allowed (a detached checkout; a branch change is checked
+    # below). Anything else (commit, reset, merge, rebase) blocks.
     bad="$(gitc reflog show -n "$added" --format=%gs HEAD 2>/dev/null | grep -v '^checkout:' || true)"
     if [ -n "$bad" ]; then
       problems="$problems; new commit or HEAD change ($old_head to $new_head): $(tr '\n' '|' <<<"$bad")"
@@ -105,8 +111,22 @@ if [ "$old_head" != "$new_head" ]; then
   fi
 fi
 
+# A checkout of a branch is not allowed: the role must use a detached checkout.
+if [ "$old_branch" != "$new_branch" ] && [ -n "$new_branch" ]; then
+  problems="$problems; branch checkout ($new_branch). Use git checkout --detach"
+fi
+
 if [ -n "$problems" ]; then
-  block "read-only role $role changed the repo: ${problems#; }. Undo the change, then stop again."
+  problems="${problems#; }"
+  if [ "$active" = "true" ]; then
+    # Second stop: allow (no loop), but leave a trace for the orchestrator.
+    printf 'role: %s\nagent_id: %s\ntime: %s\nproblems: %s\n' \
+      "$role" "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$problems" >"$dir/$safe_id.violation" ||
+      echo "readonly-check: cannot write the violation file for $role." >&2
+    echo "readonly-check: WARNING read-only role $role left the repo changed: $problems. Violation recorded in $dir/$safe_id.violation." >&2
+    exit 0
+  fi
+  block "read-only role $role changed the repo: $problems. Undo the change, then stop again."
 fi
 
 rm -f "$snap"

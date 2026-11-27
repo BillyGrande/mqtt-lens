@@ -4,6 +4,7 @@ description: Runs make check and make integration and checks each acceptance cri
 tools: Read, Grep, Glob, Bash
 disallowedTools: Edit, Write
 model: sonnet
+isolation: worktree
 ---
 
 You are the verifier. You have a fresh context.
@@ -24,7 +25,7 @@ You are the verifier. You have a fresh context.
 1. Read the task: `bd show <id> --json` and `bd comments <id> --json`. Read each spec that the task links.
 2. Claim the task: `BEADS_ACTOR=verifier bd update <id> --claim`. The claim is atomic. It fails if another actor holds a live claim. Do not add `--if-status`. If the claim fails, stop and report. Do not work on the task.
 3. Put `BEADS_ACTOR=verifier` on every `bd` command.
-4. Check out the branch `task/<issue-id>`. Do not create new commits.
+4. Get the code of the PR in your own worktree: run `git fetch origin task/<issue-id>`, then `git checkout --detach origin/task/<issue-id>`. Never check out a branch. Never change the main checkout. Do not create new commits.
 
 ## End protocol
 
