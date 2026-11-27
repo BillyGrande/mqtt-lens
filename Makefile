@@ -13,6 +13,7 @@ check:
 	mix hex.audit
 	mix deps.unlock --check-unused
 	mix test --warnings-as-errors
+	scripts/ci/test/scan_test.sh
 
 lint:
 	mix format
