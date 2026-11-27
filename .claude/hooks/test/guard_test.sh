@@ -127,11 +127,14 @@ for c in "bd ready --json" "bd show ml-1" "git status" "git log --oneline" "git 
   "git worktree remove /tmp/wt" "gh pr view 3" "gh pr list" "gh pr checks 3" "  bd ready"; do
   check "orchestrator allows: $c" 0 "$(bashj orchestrator "$c")"
 done
+# shellcheck disable=SC2016 # literal $ and backtick are the intended inputs
 for c in "git push" "rm -rf x" "gh pr merge 3" "git worktree add x" "ls" "bdx ready" "git statusx" "" \
   "bd ready; rm x" "bd ready && rm x" "bd ready || rm x" "bd ready | sh" 'bd ready `id`' \
   'bd ready $(id)' "bd ready > f" "bd ready < f" "git status & rm x" $'bd ready\nrm x' 'bd show $HOME'; do
   check "orchestrator blocks: $c" 2 "$(bashj orchestrator "$c")"
 done
+check "orchestrator blocks: git log --output=FILE" 2 "$(bashj orchestrator "git log --output=lib/x.ex -1")"
+check "orchestrator blocks: git log --output FILE" 2 "$(bashj orchestrator "git log --output lib/x.ex -1")"
 check "orchestrator Bash without command" 2 "$(jq -nc --arg d "$repo" '{agent_type:"orchestrator",tool_name:"Bash",cwd:$d,tool_input:{}}')"
 
 # --- Test-tamper (implementer only)
