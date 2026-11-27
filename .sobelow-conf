@@ -9,7 +9,10 @@
   ignore: ["Config.CSWH"],
   # Only the file-read module is ignored. Its paths are operator config
   # (MQTT_LENS_CONFIG, MQTT_LENS_SECRETS_DIR), never from a request, so the
-  # Traversal.FileModule findings are false positives (see ml-1a7.2.11). A test
-  # limits that module to File.read/1, File.dir?/1 and Path.join/2.
+  # Traversal.FileModule findings are false positives (see ml-1a7.2.11).
+  # test/mqtt_lens/config_files_test.exs pins the exact content of this file
+  # by SHA-256. A change to the file fails the test until a new security
+  # review and a test-author commit set the new hash. The same test also
+  # limits the module to File.read/1, File.dir?/1 and Path.join/2.
   ignore_files: ["lib/mqtt_lens/config/files.ex"]
 ]
