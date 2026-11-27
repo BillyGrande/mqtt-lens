@@ -133,6 +133,15 @@ for c in "git push" "rm -rf x" "gh pr merge 3" "git worktree add x" "ls" "bdx re
   'bd ready $(id)' "bd ready > f" "bd ready < f" "git status & rm x" $'bd ready\nrm x' 'bd show $HOME'; do
   check "orchestrator blocks: $c" 2 "$(bashj orchestrator "$c")"
 done
+for c in "gh pr merge 12 --rebase" "gh pr merge 12 --rebase --delete-branch"; do
+  check "orchestrator allows: $c" 0 "$(bashj orchestrator "$c")"
+done
+for c in "gh pr merge 12" "gh pr merge 12 --squash" "gh pr merge 12 --admin" "gh pr merge 12 --rebase --admin" \
+  "gh pr merge 12 --rebase --auto" "gh pr merge --rebase 12" "gh pr merge abc --rebase" "gh pr merge --rebase" \
+  "gh pr merge 12 --rebase --delete-branch --admin" "gh pr merge 12 --rebase extra" "gh pr merge  12x --rebase" \
+  "gh pr merge 12 --rebase; rm x" "gh pr merge 12 --rebase && rm x" "gh pr merge 12 --rebase > f"; do
+  check "orchestrator blocks: $c" 2 "$(bashj orchestrator "$c")"
+done
 check "orchestrator blocks: git log --output=FILE" 2 "$(bashj orchestrator "git log --output=lib/x.ex -1")"
 check "orchestrator blocks: git log --output FILE" 2 "$(bashj orchestrator "git log --output lib/x.ex -1")"
 check "orchestrator Bash without command" 2 "$(jq -nc --arg d "$repo" '{agent_type:"orchestrator",tool_name:"Bash",cwd:$d,tool_input:{}}')"
