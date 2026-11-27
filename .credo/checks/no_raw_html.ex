@@ -45,6 +45,12 @@ defmodule MqttLens.Credo.NoRawHtml do
        when is_list(args),
        do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "String.to_atom"))}
 
+  # :erlang.binary_to_atom(x, :utf8), :erlang.list_to_atom(x), &:erlang.list_to_atom/1,
+  # x |> :erlang.binary_to_atom(:utf8): all are a remote call on the :erlang module.
+  defp walk({{:., _, [:erlang, fun]}, meta, args} = ast, ctx)
+       when fun in [:binary_to_atom, :list_to_atom] and is_list(args),
+       do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], Atom.to_string(fun)))}
+
   # {:safe, _}: a 2-tuple has no metadata, so take the line from the second element.
   # A keyword entry `safe: value` has the same shape and is flagged too.
   defp walk({:safe, value} = ast, ctx) do
