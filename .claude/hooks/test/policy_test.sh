@@ -182,6 +182,12 @@ check "rp allow Bash ls" 0 "" $R "$(bj 'ls -la' "$PROJ")"
 check "rp allow Bash cat README" 0 "" $R "$(bj 'cat README.md' "$PROJ")"
 check "rp allow Bash echo secretsauce" 0 "" $R "$(bj 'echo secretsauce' "$PROJ")"
 check "rp invalid json blocks" 2 "" $R 'garbage'
+check "rp allow Bash grep word secrets" 0 "" $R "$(bj 'grep -rn secrets specs/architecture/deployment.md' "$PROJ")"
+check "rp allow Bash kubectl get secrets" 0 "" $R "$(bj 'kubectl get secrets -n app' "$PROJ")"
+check "rp block Bash deploy/secrets path" 2 "" $R "$(bj 'cat deploy/secrets/example.yaml' "$PROJ")"
+check "rp block Bash ls secrets/" 2 "" $R "$(bj 'ls secrets/' "$PROJ")"
+check "rp block Bash ./secrets/a" 2 "" $R "$(bj 'cat ./secrets/a' "$PROJ")"
+check "rp block Read relative secrets/a" 2 "" $R "$(rj 'secrets/a')"
 
 # ---------------------------------------------------------------- lib-check.sh
 L=lib-check.sh
