@@ -21,20 +21,29 @@ defmodule MqttLens.Credo.NoRawHtml do
     result.issues
   end
 
-  # raw(...) and Phoenix.HTML.raw(...)
-  defp walk({:raw, meta, [_]} = ast, ctx),
+  # Any reference to the name raw: call, pipe without parens (`x |> raw`) or capture
+  # (`&raw/1`). In the AST all of them are a node {:raw, meta, args}, args a list or nil.
+  defp walk({:raw, meta, args} = ast, ctx) when is_list(args) or is_nil(args),
     do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "raw"))}
 
-  defp walk({{:., _, [_, :raw]}, meta, [_]} = ast, ctx),
+  # Phoenix.HTML.raw(x), x |> Phoenix.HTML.raw, &Phoenix.HTML.raw/1
+  defp walk({{:., _, [_, :raw]}, meta, args} = ast, ctx) when is_list(args),
     do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "raw"))}
 
-  # x |> raw()
-  defp walk({:|>, _, [_, {:raw, meta, []}]} = ast, ctx),
-    do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "raw"))}
+  # apply(Phoenix.HTML, :raw, args), apply(String, :to_atom, args)
+  defp walk({:apply, meta, [_, name | _]} = ast, ctx) when name in [:raw, :to_atom],
+    do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], Atom.to_string(name)))}
 
-  # x |> Phoenix.HTML.raw(): the piped call has no arguments in the AST
-  defp walk({:|>, _, [_, {{:., _, [_, :raw]}, meta, []}]} = ast, ctx),
-    do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "raw"))}
+  # Kernel.apply/3 and Function.capture/3 with :raw or :to_atom
+  defp walk({{:., _, [{:__aliases__, _, [mod]}, fun]}, meta, [_, name | _]} = ast, ctx)
+       when {mod, fun} in [{:Kernel, :apply}, {:Function, :capture}] and
+              name in [:raw, :to_atom],
+       do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], Atom.to_string(name)))}
+
+  # String.to_atom(x), x |> String.to_atom, &String.to_atom/1
+  defp walk({{:., _, [{:__aliases__, _, [:String]}, :to_atom]}, meta, args} = ast, ctx)
+       when is_list(args),
+       do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "String.to_atom"))}
 
   # {:safe, _}: a 2-tuple has no metadata, so take the line from the second element.
   # A keyword entry `safe: value` has the same shape and is flagged too.
@@ -49,7 +58,8 @@ defmodule MqttLens.Credo.NoRawHtml do
 
   defp issue_for(ctx, line, trigger) do
     format_issue(ctx,
-      message: "Do not use raw/1 or {:safe, _}: it switches off HTML escaping.",
+      message:
+        "Do not use raw/1, {:safe, _} or String.to_atom: they switch off HTML escaping or grow the atom table.",
       trigger: trigger,
       line_no: line
     )
