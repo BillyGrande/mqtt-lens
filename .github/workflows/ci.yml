@@ -9,8 +9,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # Only PR runs are cancelled: a cancelled push run would leave its commit range unscanned.
+  # Each push run has its own group (run_id), so no push range is skipped or cancelled.
+  # Only PR runs share a group per ref and cancel in progress.
+  group: ${{ github.event_name == 'pull_request' && format('ci-{0}', github.ref) || format('ci-push-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
