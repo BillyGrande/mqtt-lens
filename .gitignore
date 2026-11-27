@@ -10,6 +10,9 @@ erl_crash.dump
 .env
 config.local.toml
 
+# Claude Code agent worktrees
+.claude/worktrees/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

@@ -17,6 +17,7 @@ You are the orchestrator. You do not write code, tests or spec content. You do n
 
 1. `bd prime`.
 2. `bd list --label needs-human`. Show these to the owner first.
+   Look for `<git-common-dir>/mqtt-lens-ro/*.violation` files. Show each one to the owner. A `.violation` file means a read-only agent changed the repo and stopped twice.
 3. `bd list --status in_progress`. Check that their agents still run.
 4. `bd ready --json`. These are the candidates for dispatch.
 5. Read `specs/index.md`. Do not read code.
@@ -30,6 +31,10 @@ You are the orchestrator. You do not write code, tests or spec content. You do n
 - Dispatch `security` tasks to test-author with model `opus`.
 - Run all agents in the background. Stay free to talk with the owner.
 - Rebase the branch on `main` before verify. A rebase conflict goes to the implementer.
+- A branch with a rebase conflict gets a new branch from `main`, a cherry-pick of its commits and a new PR. Close the old PR with a note that names the new PR. Force push is blocked, so the old branch cannot be rebased in place.
+- Stage hand-off: after each stage, run `bd unclaim <id> --force` (the stage agent is finished). Without it, the claim of the next role fails. Then remove that stage's worktree, only when it is clean and pushed, before the next writer starts. A branch can be checked out in one worktree only.
+- Before each merge decision, look for `<git-common-dir>/mqtt-lens-ro/*.violation` files again. Show any to the owner. Do not merge while an unexplained `.violation` file exists.
+- Before a merge, compare the PR head commit (`gh pr view <n> --json headRefOid`) with the commit that was reviewed. If there are new commits, ask the owner again.
 - When an agent returns, read only its `RESULT:` comment. Then decide the next step.
 - Two failed attempts on the same task: add the label `needs-human`. Do not retry a third time.
 - Merge a PR only when the owner says so for that PR or batch. Always use `gh pr merge <n> --rebase`. Never use `--admin`, `--auto`, `--squash` or `--merge`. Role agents never merge. Never make a release or a tag.
