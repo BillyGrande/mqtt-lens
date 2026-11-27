@@ -188,6 +188,7 @@ check "rp block Bash deploy/secrets path" 2 "" $R "$(bj 'cat deploy/secrets/exam
 check "rp block Bash ls secrets/" 2 "" $R "$(bj 'ls secrets/' "$PROJ")"
 check "rp block Bash ./secrets/a" 2 "" $R "$(bj 'cat ./secrets/a' "$PROJ")"
 check "rp block Read relative secrets/a" 2 "" $R "$(rj 'secrets/a')"
+check "rp block Bash cat a with cwd in secrets" 2 "" $R "$(bj 'cat a' "$PROJ/secrets")"
 
 # ---------------------------------------------------------------- lib-check.sh
 L=lib-check.sh
