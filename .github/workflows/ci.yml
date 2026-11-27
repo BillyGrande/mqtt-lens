@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: erlef/setup-beam@988e02bfe678367a02564f65ca2e37726dc0268f # v1.9.0
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-
+
+      - name: Fetch dependencies
+        run: make setup
+
+      - name: Unsafe pattern grep (raw, {:safe, String.to_atom, keys: :atoms)
+        run: scripts/ci/unsafe-grep.sh
+
+      - name: make check
+        run: make check
+
+      - name: No native libraries in the prod build
+        run: scripts/ci/no-native-libs.sh
+
+      - name: Deny-list scan
+        env:
+          DENYLIST: ${{ secrets.DENYLIST }}
+        run: |
+          if [ -z "${DENYLIST}" ]; then
+            echo "::notice::Deny-list secret is not available (fork or not configured): scan skipped."
+            exit 0
+          fi
+          umask 077
+          printf '%s\n' "${DENYLIST}" > "${RUNNER_TEMP}/denylist"
+          MQTTLENS_DENYLIST="${RUNNER_TEMP}/denylist" scripts/denylist-scan.sh

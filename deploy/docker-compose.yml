@@ -1,0 +1,38 @@
+# Local and CI environment: EMQX (reference broker) and Keycloak (example OIDC provider).
+# Generic example values only. Do not use in production.
+name: mqtt-lens-dev
+
+services:
+  emqx:
+    image: emqx/emqx:6.2.2@sha256:0ba29902a8e552f7152754860b4b61b49a7e16fa376035bcf10021e944b2c0a0
+    ports:
+      - "127.0.0.1:1883:1883"
+      - "127.0.0.1:18083:18083"
+    healthcheck:
+      test: ["CMD", "emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 10s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin-example-only
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - ./keycloak/realm-example.json:/opt/keycloak/data/import/realm-example.json:ro
+    healthcheck:
+      # The image has no curl: use bash and /dev/tcp against the management port.
+      test:
+        - "CMD-SHELL"
+        - "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 20s

@@ -1,0 +1,71 @@
+{
+  "realm": "example",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "groups": [
+    {
+      "name": "mqtt-lens",
+      "path": "/mqtt-lens",
+      "subGroups": [
+        { "name": "dev", "path": "/mqtt-lens/dev" },
+        { "name": "ops", "path": "/mqtt-lens/ops" }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "mqtt-lens",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:4000/auth/callback"],
+      "webOrigins": ["http://localhost:4000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4000/"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "dev-user",
+      "enabled": true,
+      "email": "dev-user@example.invalid",
+      "emailVerified": true,
+      "firstName": "Dev",
+      "lastName": "Example",
+      "credentials": [{ "type": "password", "value": "not-a-real-password-dev", "temporary": false }],
+      "groups": ["/mqtt-lens/dev"]
+    },
+    {
+      "username": "ops-user",
+      "enabled": true,
+      "email": "ops-user@example.invalid",
+      "emailVerified": true,
+      "firstName": "Ops",
+      "lastName": "Example",
+      "credentials": [{ "type": "password", "value": "not-a-real-password-ops", "temporary": false }],
+      "groups": ["/mqtt-lens/ops"]
+    }
+  ]
+}
