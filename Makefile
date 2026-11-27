@@ -12,7 +12,7 @@ check:
 	mix deps.audit
 	mix hex.audit
 	mix deps.unlock --check-unused
-	mix test
+	mix test --warnings-as-errors
 
 lint:
 	mix format
