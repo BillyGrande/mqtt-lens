@@ -9,7 +9,7 @@ dir="${1:-lib/}"
 
 # \braw\b has no legitimate use in lib/: it matches raw(, x |> raw, &raw/1,
 # Phoenix.HTML.raw, :raw (apply). \bto_atom\b matches String.to_atom in every form.
-pattern='\braw\b|\{:safe,|\bto_atom\b|keys: :atoms([^!]|$)'
+pattern='\braw\b|\{:safe,|\bto_atom\b|\b(binary|list)_to_atom\b|keys: :atoms([^!]|$)'
 rc=0
 grep -rnE --include='*.ex' --include='*.exs' --include='*.heex' -e "$pattern" "$dir" || rc=$?
 case "$rc" in

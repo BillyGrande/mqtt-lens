@@ -170,4 +170,48 @@ defmodule MqttLens.Credo.NoRawHtmlTest do
     |> run_check(NoRawHtml)
     |> refute_issues()
   end
+
+  test "flags &:erlang.binary_to_atom/1 capture" do
+    """
+    defmodule Sample do
+      def a(x), do: Enum.map(x, &:erlang.binary_to_atom/1)
+    end
+    """
+    |> to_source_file()
+    |> run_check(NoRawHtml)
+    |> assert_issue()
+  end
+
+  test "flags &:erlang.list_to_atom/1 capture" do
+    """
+    defmodule Sample do
+      def a(x), do: Enum.map(x, &:erlang.list_to_atom/1)
+    end
+    """
+    |> to_source_file()
+    |> run_check(NoRawHtml)
+    |> assert_issue()
+  end
+
+  test "flags :erlang.binary_to_atom(x, :utf8)" do
+    """
+    defmodule Sample do
+      def a(x), do: :erlang.binary_to_atom(x, :utf8)
+    end
+    """
+    |> to_source_file()
+    |> run_check(NoRawHtml)
+    |> assert_issue()
+  end
+
+  test "flags x |> :erlang.list_to_atom()" do
+    """
+    defmodule Sample do
+      def a(x), do: x |> :erlang.list_to_atom()
+    end
+    """
+    |> to_source_file()
+    |> run_check(NoRawHtml)
+    |> assert_issue()
+  end
 end

@@ -16,6 +16,11 @@ defmodule MqttLens.UnsafeGrepScriptTest do
     "x |> String.to_atom",
     "Enum.map(xs, &String.to_atom/1)",
     "apply(String, :to_atom, [x])",
+    "Enum.map(xs, &:erlang.binary_to_atom/1)",
+    "Enum.map(xs, &:erlang.list_to_atom/1)",
+    ":erlang.binary_to_atom(x, :utf8)",
+    "x |> :erlang.list_to_atom",
+    "List.to_atom(x)",
     "Jason.decode!(x, keys: :atoms)"
   ]
 
