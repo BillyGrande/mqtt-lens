@@ -16,3 +16,20 @@ config.local.toml
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Phoenix generator additions
+# Ignore .fetch files in case you like to edit your project deps locally.
+/.fetch
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# Ignore package tarball (built via "mix hex.build").
+mqtt_lens-*.tar
+
+# Ignore digested assets cache.
+/priv/static/cache_manifest.json
+
+# In case you use Node.js/npm, you want to ignore these.
+npm-debug.log
+/assets/node_modules/
