@@ -7,8 +7,9 @@
   # Config.CSWH: check_origin is set in runtime.exs from the validated config
   # list; sobelow cannot see the value.
   ignore: ["Config.CSWH"],
-  # Operator-config paths (MQTT_LENS_CONFIG, MQTT_LENS_SECRETS_DIR), never from
-  # a request. The two Traversal.FileModule findings are false positives;
-  # reviewed, see ml-1a7.2.11.
-  ignore_files: ["lib/mqtt_lens/config.ex"]
+  # Only the file-read module is ignored. Its paths are operator config
+  # (MQTT_LENS_CONFIG, MQTT_LENS_SECRETS_DIR), never from a request, so the
+  # Traversal.FileModule findings are false positives (see ml-1a7.2.11). A test
+  # limits that module to File.read/1, File.dir?/1 and Path.join/2.
+  ignore_files: ["lib/mqtt_lens/config/files.ex"]
 ]
