@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # full history: the deny-list scan reads the commits of the PR
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
@@ -47,14 +48,37 @@ jobs:
       - name: No native libraries in the prod build
         run: scripts/ci/no-native-libs.sh
 
+      # The scan skips only for PRs from forks (secrets are not available there).
+      # In every other case an empty secret is a failure: the gate must not fail open.
+      # Scope: the checked-out tree, all commit messages and the added lines of the PR
+      # diff (base..head). The beads export scan stays in the local pre-push hook,
+      # because CI has no beads data.
       - name: Deny-list scan
         env:
           DENYLIST: ${{ secrets.DENYLIST }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork == true }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
         run: |
-          if [ -z "${DENYLIST}" ]; then
-            echo "::notice::Deny-list secret is not available (fork or not configured): scan skipped."
+          if [ "${IS_FORK}" = "true" ]; then
+            echo "::notice::Pull request from a fork: the deny-list secret is not available, scan skipped."
             exit 0
+          fi
+          if [ -z "${DENYLIST}" ]; then
+            echo "::error::The DENYLIST secret is empty or missing. Add the DENYLIST repository secret (Settings, Secrets and variables, Actions)."
+            exit 1
           fi
           umask 077
           printf '%s\n' "${DENYLIST}" > "${RUNNER_TEMP}/denylist"
-          MQTTLENS_DENYLIST="${RUNNER_TEMP}/denylist" scripts/denylist-scan.sh
+          export MQTTLENS_DENYLIST="${RUNNER_TEMP}/denylist"
+          scripts/denylist-scan.sh
+          if [ -n "${PR_BASE}" ]; then
+            base="${PR_BASE}"; head="${PR_HEAD}"
+          elif [ -n "${PUSH_BEFORE}" ] && [ "${PUSH_BEFORE}" != "0000000000000000000000000000000000000000" ]; then
+            base="${PUSH_BEFORE}"; head="${PUSH_AFTER}"
+          else
+            base="${PUSH_AFTER}^"; head="${PUSH_AFTER}"
+          fi
+          scripts/ci/denylist-range.sh "${base}" "${head}"
