@@ -13,7 +13,8 @@ defmodule MqttLens.Application do
       # Start a worker by calling: MqttLens.Worker.start_link(arg)
       # {MqttLens.Worker, arg},
       # Start to serve requests, typically the last entry
-      MqttLensWeb.Endpoint
+      MqttLensWeb.Endpoint,
+      MqttLensWeb.OpsEndpoint
     ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html
@@ -27,6 +28,7 @@ defmodule MqttLens.Application do
   @impl true
   def config_change(changed, _new, removed) do
     MqttLensWeb.Endpoint.config_change(changed, removed)
+    MqttLensWeb.OpsEndpoint.config_change(changed, removed)
     :ok
   end
 end

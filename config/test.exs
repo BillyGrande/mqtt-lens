@@ -5,6 +5,14 @@ import Config
 config :mqtt_lens, MqttLensWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "KcuttQOYn3fTkBNXzIaFHnhWXpJTSjjwzaanSmtYGmnGM2DmoY7s7NOJ9fZXv8gc",
+  server: false,
+  # Fixed salts for tests only. Prod reads them from secret files.
+  session_signing_salt: "test-session-signing-salt",
+  session_encryption_salt: "test-session-encryption-salt",
+  live_view: [signing_salt: "test-live-view-signing-salt"]
+
+config :mqtt_lens, MqttLensWeb.OpsEndpoint,
+  http: [ip: {127, 0, 0, 1}, port: 9090],
   server: false
 
 # Print only warnings and errors during test

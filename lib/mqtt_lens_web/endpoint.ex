@@ -1,19 +1,28 @@
 defmodule MqttLensWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :mqtt_lens
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
-  @session_options [
-    store: :cookie,
-    key: "_mqtt_lens_key",
-    signing_salt: "1n+flZIR",
-    same_site: "Lax"
-  ]
+  # Wraps call/2 outside of the Phoenix error rendering, so that the error
+  # pages of Plug.Parsers (400, 413, 415) and 404 responses have the headers.
+  @before_compile MqttLensWeb.Plugs.SecurityHeaders
+
+  # The session is a cookie that is signed and encrypted. The salts come from
+  # secret files at runtime (config/runtime.exs), never from source code.
+  @session_key "_mqtt_lens_key"
+
+  @doc false
+  def session_options do
+    [
+      store: :cookie,
+      key: @session_key,
+      signing_salt: config(:session_signing_salt),
+      encryption_salt: config(:session_encryption_salt),
+      same_site: "Lax"
+    ]
+  end
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [session: {__MODULE__, :session_options, []}]],
+    longpoll: [connect_info: [session: {__MODULE__, :session_options, []}]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -25,6 +34,7 @@ defmodule MqttLensWeb.Endpoint do
     from: :mqtt_lens,
     gzip: not code_reloading?,
     only: MqttLensWeb.static_paths(),
+    cache_control_for_vsn_requests: "public, max-age=31536000, immutable",
     raise_on_missing_only: code_reloading?
 
   # Code reloading can be explicitly enabled under the
@@ -39,12 +49,17 @@ defmodule MqttLensWeb.Endpoint do
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
-    pass: ["*/*"],
+    parsers: [:urlencoded, :json],
+    length: 16_384,
+    pass: [],
     json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride
   plug Plug.Head
-  plug Plug.Session, @session_options
+  plug :session
   plug MqttLensWeb.Router
+
+  defp session(conn, _opts) do
+    Plug.Session.call(conn, Plug.Session.init(session_options()))
+  end
 end
