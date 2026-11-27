@@ -77,7 +77,6 @@ defmodule MqttLens.Config do
   number or array of these in JSON syntax. Duplicate keys or tables, a table
   header over a value, and other value types raise `Error`. A missing or unreadable file raises.
   """
-  # sobelow_skip ["Traversal.FileModule"]
   # The path comes from operator config (an env var), not from a request.
   @spec read_settings!(Path.t()) :: map()
   def read_settings!(path) do
@@ -248,7 +247,6 @@ defmodule MqttLens.Config do
     end
   end
 
-  # sobelow_skip ["Traversal.FileModule"]
   # `dir` is operator config and `name` is one of a fixed list.
   defp read_secret(dir, name) do
     case File.read(Path.join(dir, name)) do

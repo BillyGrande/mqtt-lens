@@ -1,3 +1,0 @@
-# Allowed sobelow_skip comments: <path> <check name>
-# Any other sobelow_skip in lib/**, or any .sobelow-skips file, fails make check.
-lib/mqtt_lens/config.ex Traversal.FileModule

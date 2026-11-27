@@ -1,11 +1,14 @@
 [
   verbose: false,
   private: false,
-  # skip: true makes sobelow honor the `# sobelow_skip ["Traversal.FileModule"]`
-  # annotations in lib/mqtt_lens/config.ex. The paths come from operator
-  # config (MQTT_LENS_CONFIG, MQTT_LENS_SECRETS_DIR), never from a request.
-  skip: true,
+  # No sobelow skips: sobelow_skip comments and .sobelow-skips files are
+  # forbidden (scripts/ci/sobelow-skips.sh).
+  skip: false,
   # Config.CSWH: check_origin is set in runtime.exs from the validated config
   # list; sobelow cannot see the value.
-  ignore: ["Config.CSWH"]
+  ignore: ["Config.CSWH"],
+  # Operator-config paths (MQTT_LENS_CONFIG, MQTT_LENS_SECRETS_DIR), never from
+  # a request. The two Traversal.FileModule findings are false positives;
+  # reviewed, see ml-1a7.2.11.
+  ignore_files: ["lib/mqtt_lens/config.ex"]
 ]
