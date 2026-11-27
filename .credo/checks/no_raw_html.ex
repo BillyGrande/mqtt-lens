@@ -32,6 +32,10 @@ defmodule MqttLens.Credo.NoRawHtml do
   defp walk({:|>, _, [_, {:raw, meta, []}]} = ast, ctx),
     do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "raw"))}
 
+  # x |> Phoenix.HTML.raw(): the piped call has no arguments in the AST
+  defp walk({:|>, _, [_, {{:., _, [_, :raw]}, meta, []}]} = ast, ctx),
+    do: {ast, put_issue(ctx, issue_for(ctx, meta[:line], "raw"))}
+
   # {:safe, _}: a 2-tuple has no metadata, so take the line from the second element.
   # A keyword entry `safe: value` has the same shape and is flagged too.
   defp walk({:safe, value} = ast, ctx) do
