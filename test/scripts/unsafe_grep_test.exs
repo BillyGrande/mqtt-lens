@@ -44,6 +44,40 @@ defmodule MqttLens.UnsafeGrepScriptTest do
     end
   end
 
+  # Interpolated word sigil with the atom modifier: it expands to String.to_atom/1.
+  @word_sigils_with_atoms [
+    ~S|~w(#{x})a|,
+    ~S|~w[#{x}]a|,
+    ~S|~w{#{x}}a|,
+    ~S|~w/#{x}/a|,
+    ~S(~w|#{x}|a),
+    ~S|~w"#{x}"a|,
+    ~S|~w'#{x}'a|
+  ]
+
+  for form <- @word_sigils_with_atoms do
+    test "finds #{form}", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "probe.ex"),
+        "defmodule P do\n  def a(x), do: #{unquote(form)}\nend\n"
+      )
+
+      assert {_, 1} = run(dir)
+    end
+  end
+
+  for form <- [~S|~w(a b)a|, ~S|~W(#{x})a|, ~S|~w(#{x})|] do
+    test "passes #{form}", %{dir: dir} do
+      File.write!(
+        Path.join(dir, "probe.ex"),
+        "defmodule P do\n  def a(x), do: #{unquote(form)}\nend\n"
+      )
+
+      assert {out, 0} = run(dir)
+      assert out =~ "unsafe-grep: ok"
+    end
+  end
+
   test "finds raw in a heex template", %{dir: dir} do
     File.write!(Path.join(dir, "probe.heex"), "<div>{@x |> raw}</div>\n")
     assert {_, 1} = run(dir)
