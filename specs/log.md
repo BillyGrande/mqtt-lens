@@ -2,6 +2,7 @@
 
 ## 2026-11-27
 
+- Added decision 0012 [merge on the owner's word](/decisions/0012-merge-on-owner-word.md) (ml-2p3.14). The owner decides each merge (H3). The main session or the orchestrator runs the rebase merge only on the owner's word for that PR or batch. Role agents never merge. H4 and H5 stay owner-only. The owner's word is a written rule, not a hook. Updated principle 3 and the H3 row in the overview, the owner and orchestrator rows and the merge control in roles, the orchestrator allow-list and a new merge section, the merge hook row and the GitHub merge line in guardrails, both index files, and the layout list in OKF specs.
 - Fixed the `bd` commands in the process specs (ml-2p3.7). The claim command is `bd update <id> --claim` only, because `bd` rejects `--if-status` with `--claim`. Added the close step: after the merge, the orchestrator runs `bd close <id> --force -r <reason>` when the task has no open children.
 - Added the repo `CLAUDE.md` (commands, rules, the override of the global review rule) and `REVIEW.md` (reviewer rules from guardrails).
 - Fixed Spike S0 item 6: it shows Done 2026-11-24.

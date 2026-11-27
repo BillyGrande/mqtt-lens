@@ -42,7 +42,10 @@ This file defines how humans and Claude agents build mqtt-lens. It combines two 
    | Code, tests, history | git |
 
 2. **An agent gets an issue ID, not a long prompt.** It reads the issue and the specs that the issue links to.
-3. **Humans approve. Agents prepare.** Agents cannot merge, cannot release and cannot deploy.
+3. **Humans approve. Agents prepare.** Role agents cannot merge, cannot release and cannot deploy.
+   The owner decides each merge (H3). The main session or the orchestrator runs the merge only on
+   the owner's word for that PR or batch, and always as a rebase merge
+   ([merge on the owner's word](/decisions/0012-merge-on-owner-word.md)). H4 and H5 stay owner-only.
 4. **Deterministic controls over advisory controls.** "A skill is an advisory control"; a hook is
    "the deterministic layer behind it". Rules that matter are hooks and CI checks.
 5. **Fresh context for checks.** The verifier and the reviewers never share a context with the implementer.
@@ -80,7 +83,7 @@ This file defines how humans and Claude agents build mqtt-lens. It combines two 
 | 5 Build | Build | Task + tests | Code in a worktree branch; PR | CI green |
 | 6 Verify | Test | PR | RESULT comment: each criterion pass/fail, literal command output | All criteria pass |
 | 7 Review | Deploy (PR review) | PR | Findings: `important` or `nit` (max 5 nits, rest as a count) | No open `important` finding |
-| H3 Merge | Deploy | PR | Merge to `main` | **Owner only** |
+| H3 Merge | Deploy | PR | Rebase merge to `main` | **Owner decides.** The main session or the orchestrator runs `gh pr merge <n> --rebase` only on the owner's word for that PR or batch ([0012](/decisions/0012-merge-on-owner-word.md)). Role agents never merge. |
 | 8 As-built | — | Merged PR | Spec `status: stable` + `verified: process:ci`; tasks closed | — |
 | 9 Maintain | Maintain | Bands, incidents, scans | New epic or bug; a regression test first | — |
 | H4 Security sign-off | — | Security epic | `specs/reviews/security-review-<n>.md` + owner sign-off | **Before the first public route** |
@@ -92,3 +95,4 @@ Bug rule: every bug starts with a committed failing test that shows it. Then the
 
 1. [Roles](/process/roles.md)
 2. [beads](/process/beads.md)
+3. [Merge on the owner's word](/decisions/0012-merge-on-owner-word.md)

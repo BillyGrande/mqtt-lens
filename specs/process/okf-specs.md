@@ -59,7 +59,7 @@ specs/
                  0004-emqtt-without-quic, 0005-no-ip-allow-list, 0006-public-repo,
                  0007-beads-okf-orchestrator-process, 0008-beads-server-mode-private-remote,
                  0009-toolchain-versions, 0010-oidc-provider-deployment-value,
-                 0011-reference-broker-emqx
+                 0011-reference-broker-emqx, 0012-merge-on-owner-word
   process/       index, overview, roles, orchestrator, beads, okf-specs, guardrails, evals,
                  repo-layout, environments-release-maintain
   reviews/       index, spike-s0; security-review-<n>.md (created later)
