@@ -45,6 +45,14 @@ if [ "$role" = "orchestrator" ] && [ "$tool" = "Bash" ]; then
   esac
   # Trim leading whitespace.
   cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+  # git writes files with --output (git accepts any unique prefix, so block --ou*).
+  case "$cmd" in
+    git\ *)
+      case " $cmd" in
+        *[[:space:]]--ou*) block "orchestrator Bash: git --output writes files" ;;
+      esac
+      ;;
+  esac
   case "$cmd" in
     "bd" | "bd "* | \
       "git status" | "git status "* | \
