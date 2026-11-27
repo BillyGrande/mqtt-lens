@@ -28,6 +28,28 @@ defmodule MqttLens.Credo.NoRawHtmlTest do
     |> assert_issue()
   end
 
+  test "flags x |> raw()" do
+    """
+    defmodule Sample do
+      def a(x), do: x |> raw()
+    end
+    """
+    |> to_source_file()
+    |> run_check(NoRawHtml)
+    |> assert_issue()
+  end
+
+  test "flags x |> Phoenix.HTML.raw()" do
+    """
+    defmodule Sample do
+      def a(x), do: x |> Phoenix.HTML.raw()
+    end
+    """
+    |> to_source_file()
+    |> run_check(NoRawHtml)
+    |> assert_issue()
+  end
+
   test "flags {:safe, _}" do
     """
     defmodule Sample do
