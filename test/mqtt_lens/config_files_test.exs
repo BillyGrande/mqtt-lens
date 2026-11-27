@@ -24,6 +24,12 @@ defmodule MqttLens.ConfigFilesTest do
       forms in `@forbidden_locals`.
     * Each function (`def` or `defp`) calls `File.read/1` or `File.dir?/1`.
       There are at most 3 functions.
+
+  Content pin (ml-1a7.2.12.1): the SHA-256 of the exact bytes of `files.ex`
+  must be `@files_ex_sha256`. The AST rules above are a deny list and have
+  known bypasses (ml-1a7.2.12.1, ml-1a7.2.12.2, ml-1a7.2.12.3). The pin
+  closes them: any change to `files.ex` fails until a new security review
+  and a test-author commit set the new hash.
   """
   use ExUnit.Case, async: true
 
@@ -211,6 +217,49 @@ defmodule MqttLens.ConfigFilesTest do
   end
 
   # ---------------------------------------------------------------------------
+  # SHA-256 pin of files.ex (ml-1a7.2.12.1).
+  # ---------------------------------------------------------------------------
+
+  # Lower-case hex SHA-256 of the exact bytes of lib/mqtt_lens/config/files.ex.
+  # Only a test-author commit (Tests-Committed trailer) changes this value, after
+  # a new security review of files.ex.
+  @files_ex_sha256 "9db936fd208b7050ab5be5cd8ac8f015fbf2e2d6dbf0a233290a437804d3e364"
+  @files_ex_head "defmodule MqttLens.Config.Files do\n"
+
+  # Returns :ok when the bytes match the pin, else {:error, message}.
+  defp pin_check(bytes) when is_binary(bytes) do
+    actual = :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
+
+    if actual == @files_ex_sha256 do
+      :ok
+    else
+      {:error,
+       "#{@files_ex} does not match its pinned content. SHA-256 is #{actual}, " <>
+         "the pin is #{@files_ex_sha256}. sobelow ignores this file, so a change to it " <>
+         "needs a new security review and a test-author commit (Tests-Committed trailer) " <>
+         "that sets the new hash in test/mqtt_lens/config_files_test.exs."}
+    end
+  end
+
+  # A copy of the bytes with one bit of the byte at `index` changed.
+  defp flip_byte(bytes, index) do
+    <<before::binary-size(^index), byte, rest::binary>> = bytes
+    <<before::binary, Bitwise.bxor(byte, 1), rest::binary>>
+  end
+
+  # A copy of the bytes with `payload` added after the defmodule line.
+  # The copy is data only. It is never written to lib/, compiled or run.
+  defp with_payload(bytes, payload) do
+    assert String.starts_with?(bytes, @files_ex_head),
+           "#{@files_ex} does not start with #{inspect(@files_ex_head)}"
+
+    copy = String.replace(bytes, @files_ex_head, @files_ex_head <> payload <> "\n", global: false)
+    assert copy != bytes
+    assert String.contains?(copy, payload)
+    copy
+  end
+
+  # ---------------------------------------------------------------------------
   # AC 1: ignore_files is exactly files.ex.
   # ---------------------------------------------------------------------------
 
@@ -250,6 +299,112 @@ defmodule MqttLens.ConfigFilesTest do
     test "defines at least one function that reads a file" do
       {_violations, functions} = check(read_repo_file!(@files_ex))
       assert map_size(functions) >= 1, "#{@files_ex} defines no file-read function"
+    end
+
+    # ml-1a7.2.12.1: exact content pin. Closes the AST-gate bypasses.
+    test "matches its pinned SHA-256" do
+      case pin_check(read_repo_file!(@files_ex)) do
+        :ok -> :ok
+        {:error, message} -> flunk(message)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Self-test of the SHA-256 pin (ml-1a7.2.12.1). Each payload is a modified
+  # copy of the bytes of files.ex in memory. No payload is written to lib/,
+  # compiled or run.
+  # ---------------------------------------------------------------------------
+
+  @bypass_payloads [
+    {"default argument call in a def head (ml-1a7.2.12.1)",
+     ~S"""
+     def read(path, _x \\ System.cmd("touch", ["/nonexistent/marker"])), do: File.read(path)
+     """},
+    {"unquote in a def head (ml-1a7.2.12.1)",
+     ~S"""
+     def read(unquote(System.cmd("touch", ["/nonexistent/marker"]))), do: File.read("x")
+     """},
+    {"unquote and pipe in @spec (ml-1a7.2.12.1)",
+     ~S"""
+     @spec dir?(unquote("touch /nonexistent/marker" |> System.shell() |> elem(1))) :: boolean()
+     """},
+    {"for into File.Stream in the module body (ml-1a7.2.12.2)",
+     ~S"""
+     for line <- ["written at compile time\n"],
+         into: %File.Stream{path: "/nonexistent/marker", modes: [:binary], node: node()},
+         do: line
+     """},
+    {"for into File.Stream in a def body (ml-1a7.2.12.2)",
+     ~S"""
+     def read(path) do
+       for line <- ["runtime read of " <> path <> "\n"],
+           into: %File.Stream{path: "/nonexistent/marker", modes: [:binary], node: node()},
+           do: line
+
+       File.read(path)
+     end
+     """},
+    {"non-literal @doc (ml-1a7.2.12.2)",
+     ~S"""
+     @doc "x" <> elem(File.read("/etc/hostname"), 1)
+     """},
+    {"captures of forbidden locals (ml-1a7.2.12.3)",
+     ~S"""
+     def read(path) do
+       _f = {&apply/3, &spawn/3, &send/2, &apply/2}
+       File.read(path)
+     end
+     """}
+  ]
+
+  describe "SHA-256 pin" do
+    test "the current bytes of files.ex pass" do
+      assert pin_check(read_repo_file!(@files_ex)) == :ok
+    end
+
+    test "the current bytes plus one appended line fail" do
+      bytes = read_repo_file!(@files_ex) <> "# one more line\n"
+      assert {:error, _message} = pin_check(bytes)
+    end
+
+    test "a one-byte change fails at the first, a middle and the last byte" do
+      bytes = read_repo_file!(@files_ex)
+
+      for index <- [0, div(byte_size(bytes), 2), byte_size(bytes) - 1] do
+        copy = flip_byte(bytes, index)
+        assert byte_size(copy) == byte_size(bytes)
+        assert {:error, _message} = pin_check(copy), "a change of byte #{index} passes the pin"
+      end
+    end
+
+    test "one removed byte fails" do
+      bytes = read_repo_file!(@files_ex)
+      copy = binary_part(bytes, 0, byte_size(bytes) - 1)
+      assert {:error, _message} = pin_check(copy)
+    end
+
+    test "an empty file fails" do
+      assert {:error, _message} = pin_check("")
+    end
+
+    test "the failure message asks for a new review and a test-author commit with the new hash" do
+      bytes = read_repo_file!(@files_ex) <> "\n"
+      actual = :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
+      assert {:error, message} = pin_check(bytes)
+      assert message =~ @files_ex
+      assert message =~ actual
+      assert message =~ @files_ex_sha256
+      assert message =~ "new security review"
+      assert message =~ "test-author commit"
+      assert message =~ "new hash"
+    end
+
+    for {label, payload} <- @bypass_payloads do
+      test "fails for the bypass: #{label}" do
+        copy = with_payload(read_repo_file!(@files_ex), unquote(payload))
+        assert {:error, _message} = pin_check(copy)
+      end
     end
   end
 
