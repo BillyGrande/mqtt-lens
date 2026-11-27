@@ -20,7 +20,8 @@ Fix the code, not the test.
 - Write the tests first. Commit them before the code.
 - Fix the code, not the test. Never skip, weaken or delete a failing test.
 - Use no employer data: no employer names, hosts, IPs or tickets.
-- Never merge a PR. Never make a release or a tag. The owner does these by hand.
+- Role agents never merge a PR. The main session and the orchestrator merge only when the owner says so for that PR or batch. Always use `gh pr merge <n> --rebase`. Never use `--admin`, `--auto`, `--squash` or `--merge`.
+- Never make a release or a tag. The owner does these by hand.
 - One task = one branch `task/<id>` = one PR.
 - Never push to `main`. Never bypass a hook (no `--no-verify`).
 - Change only the files in the Files list of the task.
