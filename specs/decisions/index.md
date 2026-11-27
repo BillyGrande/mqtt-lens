@@ -11,3 +11,4 @@
 - [Toolchain versions](/decisions/0009-toolchain-versions.md): The toolchain versions come from Spike S0.
 - [OIDC provider is a deployment value](/decisions/0010-oidc-provider-deployment-value.md): The first OIDC provider is a Keycloak realm that brokers Entra ID. Realm, groups and host are deployment values.
 - [Reference broker EMQX 6.2.2](/decisions/0011-reference-broker-emqx.md): EMQX 6.2.2 is the first and reference broker.
+- [Merge on the owner's word](/decisions/0012-merge-on-owner-word.md): The main session or the orchestrator runs the rebase merge only on the owner's word for each PR or batch. Role agents never merge.
