@@ -113,6 +113,31 @@ check "bp block gh -R pr merge" 2 "" $B "$(bj 'gh -R o/r pr merge 5')"
 check "bp block chained merge" 2 "" $B "$(bj 'echo hi && gh pr merge 1')"
 check "bp block bash -c merge" 2 "" $B "$(bj "bash -c 'gh pr merge 1'")"
 check "bp block gh api merge endpoint" 2 "" $B "$(bj 'gh api -X PUT repos/o/r/pulls/3/merge')"
+
+# Merge on the owner's word (ml-2p3.13): main session and orchestrator, --rebase only.
+bja() { jq -nc --arg c "$1" --arg a "$2" --arg d "$FEATREPO" \
+  '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c},cwd:$d,agent_type:$a}'; }
+check "bp allow main session merge --rebase" 0 "" $B "$(bj 'gh pr merge 5 --rebase')"
+check "bp allow main session merge --rebase --delete-branch" 0 "" $B "$(bj 'gh pr merge 5 --rebase --delete-branch')"
+check "bp allow main session merge flag first" 0 "" $B "$(bj 'gh pr merge --rebase 5')"
+check "bp allow orchestrator merge --rebase" 0 "" $B "$(bja 'gh pr merge 5 --rebase' orchestrator)"
+for r in implementer verifier general-purpose test-author reviewer security-reviewer architect spec-keeper scout; do
+  check "bp block $r merge --rebase" 2 "" $B "$(bja 'gh pr merge 5 --rebase' "$r")"
+done
+check "bp block merge without --rebase" 2 "" $B "$(bj 'gh pr merge 5')"
+check "bp block orchestrator merge without --rebase" 2 "" $B "$(bja 'gh pr merge 5' orchestrator)"
+check "bp block merge --rebase --admin" 2 "" $B "$(bj 'gh pr merge 5 --rebase --admin')"
+check "bp block merge --rebase --auto" 2 "" $B "$(bj 'gh pr merge 5 --rebase --auto')"
+check "bp block merge --rebase --squash" 2 "" $B "$(bj 'gh pr merge 5 --rebase --squash')"
+check "bp block merge --rebase --merge" 2 "" $B "$(bj 'gh pr merge 5 --rebase --merge')"
+check "bp block merge --squash" 2 "" $B "$(bj 'gh pr merge 5 --squash')"
+check "bp block merge -r -s" 2 "" $B "$(bj 'gh pr merge 5 -r -s')"
+check "bp block merge --rebase wrong account" 2 "gh account" $B "$(bj 'gh pr merge 5 --rebase')" MQTTLENS_GH_LOGIN=other
+check "bp block api merge (main session)" 2 "" $B "$(bj 'gh api -X PUT repos/o/r/pulls/3/merge -f merge_method=rebase')"
+check "bp block api merge (orchestrator)" 2 "" $B "$(bja 'gh api -X PUT repos/o/r/pulls/3/merge' orchestrator)"
+check "bp block api graphql merge (main session)" 2 "" $B "$(bj 'gh api graphql -f query=mergePullRequest')"
+# Known false block: quoted text with ; and "gh api merge" is split as a command.
+check "bp known false block: bd text with ; gh api merge" 2 "" $B "$(bj 'bd comments add ml-1 "note; gh api merge"')"
 check "bp block push origin main" 2 "" $B "$(bj 'git push origin main')"
 check "bp block push origin master" 2 "" $B "$(bj 'git push origin master')"
 check "bp block push HEAD:main" 2 "" $B "$(bj 'git push origin HEAD:main')"
