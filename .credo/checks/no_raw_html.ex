@@ -57,6 +57,17 @@ defmodule MqttLens.Credo.NoRawHtml do
     {ast, put_issue(ctx, issue_for(ctx, line_of(value), "{:safe,"))}
   end
 
+  # ~w(#{x})a: the sigil expands to String.to_atom/1 on each word. Credo sees the
+  # unexpanded sigil_w node, so flag it here (interpolation and the `a` modifier).
+  defp walk({:sigil_w, meta, [{:<<>>, _, parts}, mods]} = ast, ctx)
+       when is_list(parts) and is_list(mods) do
+    if ?a in mods and Enum.any?(parts, &(not is_binary(&1))) do
+      {ast, put_issue(ctx, issue_for(ctx, meta[:line], "~w"))}
+    else
+      {ast, ctx}
+    end
+  end
+
   defp walk(ast, ctx), do: {ast, ctx}
 
   defp line_of({_, meta, _}) when is_list(meta), do: meta[:line]
