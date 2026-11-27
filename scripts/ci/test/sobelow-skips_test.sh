@@ -49,6 +49,37 @@ mkdir -p "$tmp/nested_skips_file/priv"
 touch "$tmp/nested_skips_file/priv/.sobelow-skips"
 expect nested_skips_file 1 'priv/.sobelow-skips'
 
+# Bypass 1: a comment inside a keyword list in a config file (sobelow then
+# skips the whole file as unparsable).
+probe config_comment
+mkdir -p "$tmp/config_comment/config"
+printf 'import Config\n\nconfig :a, B,\n  # sobelow_skip ["Config.Secrets"]\n  secret_key_base: "x"\n' >"$tmp/config_comment/config/runtime.exs"
+expect config_comment 1 'config/runtime.exs Config.Secrets'
+
+# Bypass 2: the allowed check name placed inside a call, not above a def.
+# The script accepts the comment (file + check are on the allow-list), so
+# sobelow --strict must fail on the unparsable file.
+probe allowed_elsewhere
+printf 'defmodule A do\n  def f(cmd), do: System.cmd(cmd, [\n  # sobelow_skip ["Traversal.FileModule"]\n  "-v"])\nend\n' >"$tmp/allowed_elsewhere/lib/a.ex"
+expect allowed_elsewhere 0
+if command -v mix >/dev/null 2>&1 && [ -f "$here/../../../mix.exs" ]; then
+  repo="$(cd "$here/../../.." && pwd)"
+  mkdir -p "$tmp/allowed_elsewhere/config"
+  cp "$repo/mix.exs" "$repo/.sobelow-conf" "$tmp/allowed_elsewhere/"
+  cp "$repo/config/config.exs" "$tmp/allowed_elsewhere/config/"
+  if (cd "$repo" && mix sobelow --root "$tmp/allowed_elsewhere" --exit --threshold low --strict >"$tmp/sobelow.out" 2>&1); then
+    echo "FAIL allowed_elsewhere_strict: sobelow --strict exit 0: $(tail -3 "$tmp/sobelow.out")"
+    fails=$((fails + 1))
+  else
+    echo "ok   allowed_elsewhere_strict"
+  fi
+fi
+
+# Bypass 3: two skip comments on one line (the script read only the last).
+probe two_on_line
+printf '# sobelow_skip ["CI.System"] # sobelow_skip ["Traversal.FileModule"]\ndef f(cmd), do: System.cmd(cmd, [])\n' >"$tmp/two_on_line/lib/a.ex"
+expect two_on_line 1 'more than one'
+
 probe no_allow
 rm "$tmp/no_allow.allow"
 expect no_allow 1 'allow-list'
