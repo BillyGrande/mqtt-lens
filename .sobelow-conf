@@ -1,8 +1,11 @@
 [
   verbose: false,
   private: false,
-  # Config.CSP is a real finding, not a false positive. It is deferred:
-  # M2.2 (ml-1a7.2) adds the Content-Security-Policy header and removes
-  # this ignore.
-  ignore: ["Config.CSP"]
+  # skip: true makes sobelow honor the `# sobelow_skip ["Traversal.FileModule"]`
+  # annotations in lib/mqtt_lens/config.ex. The paths come from operator
+  # config (MQTT_LENS_CONFIG, MQTT_LENS_SECRETS_DIR), never from a request.
+  skip: true,
+  # Config.CSWH: check_origin is set in runtime.exs from the validated config
+  # list; sobelow cannot see the value.
+  ignore: ["Config.CSWH"]
 ]
