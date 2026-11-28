@@ -31,7 +31,10 @@ esac
 allowed_dirs=""
 case "$role" in
   architect | spec-keeper) allowed_dirs="specs" ;;
-  test-author | implementer) allowed_dirs="lib test assets config priv" ;;
+  # The test-author also writes hook tests (owner decision 2026-11-28, ml-1a7.7).
+  # The hook code and the rest of .claude/ stay blocked for every role.
+  test-author) allowed_dirs="lib test assets config priv .claude/hooks/test" ;;
+  implementer) allowed_dirs="lib test assets config priv" ;;
 esac
 
 # --- Orchestrator Bash allow-list
