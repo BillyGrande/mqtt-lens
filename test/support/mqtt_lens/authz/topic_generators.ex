@@ -97,6 +97,78 @@ defmodule MqttLens.Authz.TopicGenerators do
   @doc "Any binary: random bytes or a string from any_string/0."
   def any_binary, do: SD.one_of([SD.binary(), any_string()])
 
+  @doc """
+  A bounded term that is not a binary at the top level. It has the same kinds
+  as `StreamData.term/0`: integers, floats, atoms (also `true`, `false` and
+  `nil`), references, lists (also charlists and improper lists), tuples
+  (0 to 4 elements), maps and nested values of these. Binaries occur only
+  inside a list, an improper list, a tuple or a map, as in `StreamData.term/0`.
+
+  It does not use `StreamData.float/1`, because that generator is very slow in
+  stream_data 1.4.0. The floats come from fixed values and from integer
+  division. The size is at most 10, and each collection has at most 4 elements.
+  """
+  def non_binary_term do
+    nested = SD.tree(inner_leaf(), &container/1)
+
+    [scalar(), container(nested)]
+    |> SD.one_of()
+    |> SD.scale(&min(&1, 10))
+  end
+
+  # A leaf that is not a binary: integer, float, atom or reference.
+  defp scalar do
+    SD.one_of([integer_term(), float_term(), atom_term(), reference_term()])
+  end
+
+  # A leaf inside a collection. It can also be a binary.
+  defp inner_leaf do
+    SD.frequency([{4, scalar()}, {1, SD.binary(max_length: 8)}, {1, topic()}])
+  end
+
+  defp container(child) do
+    SD.one_of([
+      SD.list_of(child, max_length: 4),
+      charlist(),
+      improper_list(child),
+      SD.map(SD.list_of(child, max_length: 4), &List.to_tuple/1),
+      SD.map_of(child, child, max_length: 4)
+    ])
+  end
+
+  defp integer_term do
+    SD.one_of([SD.integer(), SD.member_of([0, -1, 255, 1_114_111, 2 ** 64, -(2 ** 64)])])
+  end
+
+  defp float_term do
+    fixed = SD.member_of([0.0, -0.0, 1.0, -1.5, 1.0e308, -1.0e308, 5.0e-324])
+    divided = SD.map(SD.tuple({SD.integer(), SD.positive_integer()}), fn {a, b} -> a / b end)
+    SD.one_of([fixed, divided])
+  end
+
+  defp atom_term do
+    fixed = SD.member_of([true, false, nil, :ok, :error, :a, :"a/b", :+, :"#", :"$SYS", String])
+    SD.one_of([fixed, SD.atom(:alphanumeric)])
+  end
+
+  defp reference_term, do: SD.map(SD.constant(nil), fn _ -> make_ref() end)
+
+  # Charlists: random code points, and topics and filters as charlists.
+  defp charlist do
+    SD.one_of([
+      SD.list_of(SD.integer(0..0x10FFFF), min_length: 1, max_length: 4),
+      SD.map(topic(), &String.to_charlist/1),
+      SD.map(filter(), &String.to_charlist/1)
+    ])
+  end
+
+  # A list with 1 to 3 elements and a tail that is not a list.
+  defp improper_list(child) do
+    {SD.list_of(child, min_length: 1, max_length: 3), inner_leaf()}
+    |> SD.tuple()
+    |> SD.map(fn {list, tail} -> list ++ tail end)
+  end
+
   defp plain_body do
     SD.list_of(SD.frequency([{3, level()}, {1, SD.constant("+")}]), max_length: 3)
   end

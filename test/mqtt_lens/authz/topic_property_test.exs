@@ -143,7 +143,7 @@ defmodule MqttLens.Authz.TopicPropertyTest do
     end
 
     property "on any term, validation gives :ok or {:error, :not_a_binary} for non-binaries" do
-      check all(value <- term(), max_runs: @runs) do
+      check all(value <- Gen.non_binary_term(), max_runs: @runs) do
         topic_result = Topic.validate_topic(value)
         filter_result = Topic.validate_filter(value)
 
