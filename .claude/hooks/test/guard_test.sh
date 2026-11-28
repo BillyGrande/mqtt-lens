@@ -97,6 +97,20 @@ check "implementer NotebookEdit test" 0 "$(edit implementer NotebookEdit test/n.
 check "implementer NotebookEdit specs" 2 "$(edit implementer NotebookEdit specs/n.ipynb)"
 check "implementer Write without path" 2 "$(jq -nc --arg c "$repo" '{agent_type:"implementer",tool_name:"Write",cwd:$c,tool_input:{}}')"
 
+# --- test-author: hook tests (owner decision 2026-11-28, ml-1a7.7)
+check "test-author writes hook test" 0 "$(edit test-author Write .claude/hooks/test/policy_test.sh)"
+check "test-author edits hook test" 0 "$(edit test-author Edit .claude/hooks/test/guard_test.sh)"
+check "test-author writes new hook test" 0 "$(edit test-author Write .claude/hooks/test/new_test.sh)"
+check "test-author blocked from guard.sh" 2 "$(edit test-author Edit .claude/hooks/guard.sh)"
+check "test-author blocked from bash-policy.sh" 2 "$(edit test-author Edit .claude/hooks/bash-policy.sh)"
+check "test-author blocked from settings" 2 "$(edit test-author Write .claude/settings.json)"
+check "test-author blocked from agents" 2 "$(edit test-author Write .claude/agents/test-author.md)"
+check "test-author blocked from hooks/testx" 2 "$(edit test-author Write .claude/hooks/testx/a.sh)"
+check "test-author blocked from hooks/test dir name" 2 "$(edit test-author Write .claude/hooks/test)"
+check "test-author blocked from hooks/test via .." 2 "$(edit test-author Write .claude/hooks/test/../guard.sh)"
+check "implementer blocked from hook test" 2 "$(edit implementer Write .claude/hooks/test/policy_test.sh)"
+check "implementer Edit blocked from hook test" 2 "$(edit implementer Edit .claude/hooks/test/guard_test.sh)"
+
 # --- Path attacks
 check "traversal out of specs" 2 "$(edit architect Write specs/../lib/a.ex)"
 check "traversal out of repo" 2 "$(edit implementer Write lib/../../outside/a)"
