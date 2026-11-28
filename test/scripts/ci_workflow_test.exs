@@ -7,6 +7,9 @@ defmodule MqttLens.CiWorkflowTest do
   #     git show "<base sha>:scripts/ci/test-tamper.sh" into $RUNNER_TEMP, then bash
   #     runs that file. The values come through env only. If BASE has no such file,
   #     the step fails.
+  #   3 (ml-1a7.5.4) The step fails (non-zero) when the BASE value is empty or unset,
+  #     before it runs git show. An empty BASE makes ":scripts/ci/test-tamper.sh",
+  #     which reads the index (PR) copy.
   # The file is read as text with a small parser for the step blocks (no YAML library
   # in the deps).
   use ExUnit.Case, async: true
@@ -354,6 +357,106 @@ defmodule MqttLens.CiWorkflowTest do
       assert {out, code} = run_step(repo, temp, base, head)
       assert code != 0
       refute out =~ "HEAD-COPY-8J1"
+    end
+  end
+
+  # --- ml-1a7.5.4 ---------------------------------------------------------------
+
+  # Runs the step as run_step/4 does, but sets the BASE env value to base_value
+  # (nil = unset) and puts a git wrapper first on PATH. The wrapper writes each git
+  # command line to a log file, then runs the real git. Returns {out, code, log}.
+  defp run_step_logged(repo, temp, base_value, head) do
+    step = tamper_step()
+    base_var = env_var(step, @base_sha_expr)
+
+    env =
+      for {k, v} <- Map.get(step, "env", %{}), is_binary(v) do
+        cond do
+          k == base_var -> {k, base_value}
+          v =~ @head_sha_expr -> {k, head}
+          v =~ "${{" -> {k, ""}
+          true -> {k, v}
+        end
+      end
+
+    real_git = System.find_executable("git") || flunk("git is not on PATH")
+    bin = Path.join(temp, "bin-#{System.unique_integer([:positive])}")
+    log = Path.join(temp, "git-#{System.unique_integer([:positive])}.log")
+    File.mkdir_p!(bin)
+    File.write!(log, "")
+
+    File.write!(
+      Path.join(bin, "git"),
+      "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '#{log}'\nexec '#{real_git}' \"$@\"\n"
+    )
+
+    File.chmod!(Path.join(bin, "git"), 0o755)
+
+    file = Path.join(temp, "step-#{System.unique_integer([:positive])}.sh")
+    File.write!(file, step["run"] <> "\n")
+    runner_temp = Path.join(temp, "runner")
+    File.mkdir_p!(runner_temp)
+
+    {out, code} =
+      System.cmd("bash", shell_args(step) ++ [file],
+        cd: repo,
+        env:
+          @git_env ++
+            env ++
+            [{"RUNNER_TEMP", runner_temp}, {"PATH", bin <> ":" <> System.get_env("PATH", "")}],
+        stderr_to_stdout: true
+      )
+
+    {out, code, File.read!(log)}
+  end
+
+  defp git_show_called?(log) do
+    log |> String.split("\n") |> Enum.any?(&String.starts_with?(&1, "show"))
+  end
+
+  describe "the test-tamper step with an empty or unset BASE value (ml-1a7.5.4)" do
+    setup do
+      repo = Path.join(System.tmp_dir!(), "ci-workflow-#{System.unique_integer([:positive])}")
+      temp = repo <> "-runner-temp"
+      File.mkdir_p!(repo)
+      File.mkdir_p!(temp)
+
+      on_exit(fn ->
+        File.rm_rf!(repo)
+        File.rm_rf!(temp)
+      end)
+
+      git(repo, ["init", "-q", "-b", "main"])
+      git(repo, ["config", "gc.auto", "0"])
+      write(repo, @script, "#!/usr/bin/env bash\necho \"BASE-COPY-3F7 $1 $2\"\nexit 0\n")
+      base = commit(repo, "ci: base gate")
+      # The index and HEAD hold the PR copy. "git show :<path>" (empty BASE) reads it.
+      write(repo, @script, @head_copy)
+      head = commit(repo, "ci: PR gate")
+      {:ok, repo: repo, temp: temp, base: base, head: head}
+    end
+
+    test "the git wrapper logs git show when the BASE value is set",
+         %{repo: repo, temp: temp, base: base, head: head} do
+      assert {out, 0, log} = run_step_logged(repo, temp, base, head)
+      assert out =~ "BASE-COPY-3F7"
+      assert git_show_called?(log), "the git wrapper did not log git show: #{inspect(log)}"
+    end
+
+    test "fails before git show when the BASE value is empty",
+         %{repo: repo, temp: temp, head: head} do
+      assert {out, code, log} = run_step_logged(repo, temp, "", head)
+      assert code != 0
+      refute out =~ "HEAD-COPY-8J1"
+      refute git_show_called?(log), "the step ran git show with an empty BASE value"
+    end
+
+    test "fails before git show when the BASE value is unset",
+         %{repo: repo, temp: temp, head: head} do
+      assert {out, code, log} = run_step_logged(repo, temp, nil, head)
+      assert code != 0
+      refute out =~ "HEAD-COPY-8J1"
+      refute git_show_called?(log), "the step ran git show with no BASE value"
     end
   end
 end

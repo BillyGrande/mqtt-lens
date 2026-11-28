@@ -14,6 +14,11 @@ defmodule MqttLens.TestTamperScriptTest do
   #   - A range with no trailer commit that changes a path under lib/ fails. A range
   #     that changes docs or scripts only passes with a notice.
   #   - A shallow repository fails.
+  # Fix round 1 of ml-1a7.5:
+  #   - Paths that git quotes (non-ASCII, double quote, backslash, tab, newline) are
+  #     checked as raw paths, under test/ and lib/ (ml-1a7.5.1).
+  #   - The trailer key counts only when it is exactly "Tests-Committed: " (case and
+  #     space as written), as in .claude/hooks/guard.sh (ml-1a7.5.2).
   use ExUnit.Case, async: true
 
   @script Path.expand("../../scripts/ci/test-tamper.sh", __DIR__)
@@ -636,6 +641,153 @@ defmodule MqttLens.TestTamperScriptTest do
 
       assert {out, 1} = run(clone, base, top)
       assert out =~ "shallow"
+    end
+  end
+
+  # --- ml-1a7.5 fix round 1 ---------------------------------------------------
+
+  # Path stems that git C-quotes in its plain output (core.quotePath): a non-ASCII
+  # byte, a double quote, a backslash, a tab and a newline. Each stem starts with an
+  # ASCII marker, so a test can find the path in the output in raw or quoted form.
+  @quoted_names [
+    {"a non-ASCII name", "nonascii_K3P_é", "nonascii_K3P_"},
+    {"a name with a double quote", "quote_Q8D_\"x", "quote_Q8D_"},
+    {"a name with a backslash", "backslash_B2S_\\x", "backslash_B2S_"},
+    {"a name with a tab", "tab_T5B_\tx", "tab_T5B_"},
+    {"a name with a newline", "newline_N4L_\nx", "newline_N4L_"}
+  ]
+
+  describe "paths that git quotes (ml-1a7.5.1)" do
+    for {label, stem, marker} <- @quoted_names do
+      @stem stem
+      @marker marker
+
+      test "fails when a later commit without the trailer adds a file under test/ with #{label}",
+           %{repo: repo, base: base} do
+        path = "test/#{@stem}_test.exs"
+        tests_committed(repo)
+        write(repo, path, "defmodule QuotedTest do\nend\n")
+        bad = commit(repo, "fix: add a quoted test")
+
+        assert {out, 1} = run(repo, base, head(repo))
+        assert out =~ @marker
+        assert out =~ String.slice(bad, 0, 7)
+      end
+
+      test "fails when a later commit without the trailer modifies a file under test/ with #{label}",
+           %{repo: repo} do
+        path = "test/#{@stem}_test.exs"
+        write(repo, path, "defmodule QuotedTest do\nend\n")
+        base = commit(repo, "chore: quoted test in BASE")
+        tests_committed(repo)
+        write(repo, path, "defmodule QuotedTest do\n  # weakened\nend\n")
+        bad = commit(repo, "fix: weaken the quoted test")
+
+        assert {out, 1} = run(repo, base, head(repo))
+        assert out =~ @marker
+        assert out =~ String.slice(bad, 0, 7)
+      end
+
+      test "fails when a range with no trailer commit adds a file under test/ with #{label}",
+           %{repo: repo, base: base} do
+        write(repo, "test/#{@stem}_test.exs", "defmodule QuotedTest do\nend\n")
+        commit(repo, "test: quoted")
+
+        assert {out, 1} = run(repo, base, head(repo))
+        assert out =~ @marker
+      end
+
+      test "fails when a range with no trailer commit changes only a lib/ path with #{label}",
+           %{repo: repo, base: base} do
+        write(repo, "lib/#{@stem}.ex", "defmodule Quoted do\nend\n")
+        commit(repo, "feat: quoted")
+
+        assert {out, 1} = run(repo, base, head(repo))
+        assert out =~ "Tests-Committed"
+      end
+
+      test "passes with a notice when a range with no trailer commit changes only a docs/ path with #{label}",
+           %{repo: repo, base: base} do
+        write(repo, "docs/#{@stem}.md", "notes\n")
+        commit(repo, "docs: quoted")
+
+        assert {out, 0} = run(repo, base, head(repo))
+        assert out =~ "Tests-Committed"
+      end
+
+      test "passes when a later commit without the trailer changes only a docs/ path with #{label}",
+           %{repo: repo, base: base} do
+        tests_committed(repo)
+        write(repo, "docs/#{@stem}.md", "notes\n")
+        commit(repo, "docs: quoted")
+
+        assert {out, 0} = run(repo, base, head(repo))
+        assert out =~ "ok"
+      end
+    end
+  end
+
+  # The trailer key counts only when it is exactly "Tests-Committed" (this case),
+  # followed by ": " and the value, as in .claude/hooks/guard.sh. git itself matches
+  # the key without case and accepts no space or a space before the colon.
+  @inexact_keys [
+    {"a lower-case key", "tests-committed: ml-x"},
+    {"an upper-case key", "TESTS-COMMITTED: ml-x"},
+    {"no space after the colon", "Tests-Committed:ml-x"},
+    {"a space before the colon", "Tests-Committed : ml-x"}
+  ]
+
+  describe "the trailer key must be exactly \"Tests-Committed: \" (ml-1a7.5.2)" do
+    for {label, line} <- @inexact_keys do
+      @line line
+
+      test "a trailer line with #{label} does not exempt a commit that modifies a frozen file",
+           %{repo: repo, base: base} do
+        tests_committed(repo)
+        write(repo, @frozen, "defmodule ProbeTest do\n  # weakened\nend\n")
+        bad = commit(repo, "fix: weaken the test\n\n" <> @line)
+
+        assert {out, 1} = run(repo, base, head(repo))
+        assert out =~ @frozen
+        assert out =~ String.slice(bad, 0, 7)
+      end
+
+      test "a range whose only trailer line has #{label} is a range with no trailer commit (lib/ fails)",
+           %{repo: repo, base: base} do
+        write(repo, "lib/probe.ex", "defmodule Probe do\nend\n")
+        commit(repo, "feat: probe\n\n" <> @line)
+
+        assert {out, 1} = run(repo, base, head(repo))
+        assert out =~ "Tests-Committed"
+      end
+
+      test "a range whose only trailer line has #{label} is a range with no trailer commit (test/ add fails)",
+           %{repo: repo, base: base} do
+        write(repo, @frozen, "defmodule ProbeTest do\nend\n")
+        commit(repo, "test: probe (ml-x)\n\n" <> @line)
+
+        assert {out, 1} = run(repo, base, head(repo))
+        assert out =~ @frozen
+      end
+
+      test "a range whose only trailer line has #{label} and changes docs only passes with the notice",
+           %{repo: repo, base: base} do
+        write(repo, "specs/notes.md", "notes\n")
+        commit(repo, "docs: notes\n\n" <> @line)
+
+        assert {out, 0} = run(repo, base, head(repo))
+        assert out =~ "notice"
+      end
+    end
+
+    test "the exact key \"Tests-Committed: \" still counts", %{repo: repo, base: base} do
+      write(repo, @frozen, "defmodule ProbeTest do\nend\n")
+      commit(repo, "test: probe (ml-x)\n\nTests-Committed: ml-x")
+      write(repo, "lib/probe.ex", "defmodule Probe do\nend\n")
+      commit(repo, "feat: probe")
+
+      assert {out, 0} = run(repo, base, head(repo))
+      assert out =~ "ok"
     end
   end
 end
